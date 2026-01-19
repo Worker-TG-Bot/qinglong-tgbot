@@ -1,0 +1,18 @@
+name = "qinglong-tgbot"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Durable Objects 配置
+[[durable_objects.bindings]]
+name = "QL_CACHE"
+class_name = "QlCache"
+
+# 首次部署时创建 DO 类
+[[migrations]]
+tag = "v1"
+new_classes = ["QlCache"]
+#new_sqlite_classes
+
+# 环境变量（也可以在网页配置）
+[vars]
+# 注意：敏感信息不要放这里
