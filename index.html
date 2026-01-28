@@ -1,0 +1,3239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>青龙面板 Bot v5.0 - 多用户API版</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    .code-container {
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    .code-container::-webkit-scrollbar {
+      width: 8px;
+    }
+    .code-container::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+    .code-container::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 4px;
+    }
+    .tab-active {
+      border-bottom: 2px solid #3b82f6;
+      color: #3b82f6;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+  <!-- Header -->
+  <header class="bg-gradient-to-r from-blue-900 to-purple-900 shadow-lg">
+    <div class="max-w-7xl mx-auto px-4 py-6">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <span class="text-4xl">🐉</span>
+          <div>
+            <h1 class="text-2xl font-bold">青龙面板 Telegram Bot</h1>
+            <p class="text-blue-200">v5.0 - 多用户 API 版</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <span class="px-3 py-1 bg-red-600 rounded-full text-sm">🔐 端到端加密</span>
+          <span class="px-3 py-1 bg-green-600 rounded-full text-sm">👥 多用户</span>
+          <span class="px-3 py-1 bg-yellow-600 rounded-full text-sm">🔌 RESTful API</span>
+          <span class="px-3 py-1 bg-blue-600 rounded-full text-sm">Cloudflare Workers</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-4 py-8">
+    <!-- Feature Highlights -->
+    <section class="mb-8 grid md:grid-cols-3 gap-6">
+      <div class="bg-gradient-to-r from-red-900/50 to-orange-900/50 border border-red-700 rounded-xl p-6">
+        <h2 class="text-xl font-bold text-red-400 mb-4 flex items-center gap-2">
+          <span>🔐</span> 安全加密存储
+        </h2>
+        <ul class="space-y-2 text-gray-300">
+          <li class="flex items-start gap-2">
+            <span class="text-red-500">▸</span>
+            用户设置 PIN 码作为加密密钥
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-red-500">▸</span>
+            AES-256-GCM 加密敏感凭证
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-red-500">▸</span>
+            PIN 不存储，部署者无法解密
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-red-500">▸</span>
+            每次会话需验证 PIN
+          </li>
+        </ul>
+      </div>
+      
+      <div class="bg-gradient-to-r from-green-900/50 to-emerald-900/50 border border-green-700 rounded-xl p-6">
+        <h2 class="text-xl font-bold text-green-400 mb-4 flex items-center gap-2">
+          <span>👥</span> 多用户管理
+        </h2>
+        <ul class="space-y-2 text-gray-300">
+          <li class="flex items-start gap-2">
+            <span class="text-green-500">▸</span>
+            普通用户可自助添加青龙面板
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-500">▸</span>
+            用户可随时删除自己的配置
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-500">▸</span>
+            管理员可查看/删除/拉黑用户
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-500">▸</span>
+            管理员使用默认青龙配置
+          </li>
+        </ul>
+      </div>
+
+      <div class="bg-gradient-to-r from-yellow-900/50 to-amber-900/50 border border-yellow-700 rounded-xl p-6">
+        <h2 class="text-xl font-bold text-yellow-400 mb-4 flex items-center gap-2">
+          <span>🔌</span> RESTful API
+        </h2>
+        <ul class="space-y-2 text-gray-300">
+          <li class="flex items-start gap-2">
+            <span class="text-yellow-500">▸</span>
+            完整的 REST API 接口
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-yellow-500">▸</span>
+            JWT Token 认证机制
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-yellow-500">▸</span>
+            支持环境变量/任务/订阅等
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-yellow-500">▸</span>
+            可与其他系统集成
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Architecture -->
+    <section class="mb-8">
+      <div class="bg-gray-800 rounded-xl p-6">
+        <h2 class="text-xl font-bold text-blue-400 mb-4">🏗️ 系统架构</h2>
+        <div class="grid md:grid-cols-3 gap-4">
+          <div class="bg-gray-700 rounded-lg p-4 text-center">
+            <div class="text-3xl mb-2">👤</div>
+            <h3 class="font-bold text-yellow-400">普通用户</h3>
+            <p class="text-sm text-gray-400 mt-2">自助添加青龙面板<br>PIN 加密存储凭证<br>可删除自己配置</p>
+          </div>
+          <div class="bg-gray-700 rounded-lg p-4 text-center">
+            <div class="text-3xl mb-2">👑</div>
+            <h3 class="font-bold text-purple-400">管理员</h3>
+            <p class="text-sm text-gray-400 mt-2">使用默认青龙配置<br>管理所有用户<br>可拉黑违规用户</p>
+          </div>
+          <div class="bg-gray-700 rounded-lg p-4 text-center">
+            <div class="text-3xl mb-2">🔒</div>
+            <h3 class="font-bold text-red-400">KV 存储</h3>
+            <p class="text-sm text-gray-400 mt-2">加密存储用户凭证<br>黑名单管理<br>用户元数据</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tabs -->
+    <div class="flex gap-4 border-b border-gray-700 mb-6 overflow-x-auto">
+      <button onclick="showTab('flow')" id="tab-flow" class="px-4 py-2 font-medium tab-active whitespace-nowrap">
+        📊 用户流程
+      </button>
+      <button onclick="showTab('api')" id="tab-api" class="px-4 py-2 font-medium text-gray-400 hover:text-gray-200 whitespace-nowrap">
+        🔌 API 文档
+      </button>
+      <button onclick="showTab('full')" id="tab-full" class="px-4 py-2 font-medium text-gray-400 hover:text-gray-200 whitespace-nowrap">
+        📜 完整代码
+      </button>
+      <button onclick="showTab('usage')" id="tab-usage" class="px-4 py-2 font-medium text-gray-400 hover:text-gray-200 whitespace-nowrap">
+        📖 部署说明
+      </button>
+    </div>
+
+    <!-- Flow Tab -->
+    <div id="content-flow" class="space-y-6">
+      <!-- New User Flow -->
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="bg-gray-700 px-4 py-3">
+          <h3 class="font-semibold text-green-400">🆕 新用户流程</h3>
+        </div>
+        <div class="p-4">
+          <div class="flex flex-wrap gap-2 items-center text-sm">
+            <span class="px-3 py-2 bg-blue-900 rounded-lg">访问 Bot</span>
+            <span class="text-gray-500">→</span>
+            <span class="px-3 py-2 bg-yellow-900 rounded-lg">提示添加青龙</span>
+            <span class="text-gray-500">→</span>
+            <span class="px-3 py-2 bg-green-900 rounded-lg">输入 URL</span>
+            <span class="text-gray-500">→</span>
+            <span class="px-3 py-2 bg-green-900 rounded-lg">输入 Client ID</span>
+            <span class="text-gray-500">→</span>
+            <span class="px-3 py-2 bg-green-900 rounded-lg">输入 Secret</span>
+            <span class="text-gray-500">→</span>
+            <span class="px-3 py-2 bg-red-900 rounded-lg">设置 PIN</span>
+            <span class="text-gray-500">→</span>
+            <span class="px-3 py-2 bg-purple-900 rounded-lg">加密保存</span>
+            <span class="text-gray-500">→</span>
+            <span class="px-3 py-2 bg-blue-900 rounded-lg">开始使用</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Return User Flow -->
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="bg-gray-700 px-4 py-3">
+          <h3 class="font-semibold text-blue-400">🔄 老用户流程</h3>
+        </div>
+        <div class="p-4">
+          <div class="flex flex-wrap gap-2 items-center text-sm">
+            <span class="px-3 py-2 bg-blue-900 rounded-lg">访问 Bot</span>
+            <span class="text-gray-500">→</span>
+            <span class="px-3 py-2 bg-red-900 rounded-lg">输入 PIN 解锁</span>
+            <span class="text-gray-500">→</span>
+            <span class="px-3 py-2 bg-purple-900 rounded-lg">解密凭证</span>
+            <span class="text-gray-500">→</span>
+            <span class="px-3 py-2 bg-green-900 rounded-lg">正常使用</span>
+          </div>
+          <p class="text-gray-400 text-sm mt-3">💡 会话有效期内无需重复输入 PIN（可配置超时时间）</p>
+        </div>
+      </div>
+
+      <!-- Admin Flow -->
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="bg-gray-700 px-4 py-3">
+          <h3 class="font-semibold text-purple-400">👑 管理员功能</h3>
+        </div>
+        <div class="p-4 grid md:grid-cols-2 gap-4">
+          <div class="bg-gray-700 rounded-lg p-4">
+            <h4 class="font-semibold text-yellow-400 mb-2">📋 用户管理</h4>
+            <ul class="text-sm text-gray-300 space-y-1">
+              <li>• 查看所有已注册用户</li>
+              <li>• 查看用户基本信息（不含凭证）</li>
+              <li>• 删除用户配置</li>
+              <li>• 拉黑用户（禁止使用）</li>
+              <li>• 解除拉黑</li>
+            </ul>
+          </div>
+          <div class="bg-gray-700 rounded-lg p-4">
+            <h4 class="font-semibold text-green-400 mb-2">🔧 默认配置</h4>
+            <ul class="text-sm text-gray-300 space-y-1">
+              <li>• 使用环境变量中的青龙配置</li>
+              <li>• 无需 PIN 验证</li>
+              <li>• 完整功能权限</li>
+              <li>• 新增 /users 命令</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Security -->
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="bg-gray-700 px-4 py-3">
+          <h3 class="font-semibold text-red-400">🔐 加密安全说明</h3>
+        </div>
+        <div class="p-4">
+          <pre class="rounded-lg text-sm"><code class="language-javascript">// 加密流程说明
+// 1. 用户设置 6 位数字 PIN（不存储原始 PIN）
+// 2. 使用 PBKDF2 从 PIN + UserID + Salt 派生 256 位密钥
+// 3. 使用 AES-256-GCM 加密青龙凭证
+// 4. 存储: { salt, iv, encryptedData, authTag }
+// 5. PIN 验证: 尝试解密，成功则 PIN 正确
+
+// 为什么部署者无法解密？
+// - PIN 只存在于用户脑中，不存储
+// - 没有 PIN 无法派生正确的密钥
+// - AES-GCM 提供认证加密，错误密钥会解密失败
+// - 即使拿到 KV 数据也无法暴力破解（PBKDF2 iterations）</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- API Documentation Tab -->
+    <div id="content-api" class="hidden space-y-6">
+      <!-- API Overview -->
+      <div class="bg-gray-800 rounded-xl p-6">
+        <h2 class="text-xl font-bold text-yellow-400 mb-4">🔌 API 概览</h2>
+        <p class="text-gray-300 mb-4">所有 API 请求需要在 Header 中携带认证 Token：</p>
+        <pre class="bg-gray-900 p-4 rounded-lg text-sm overflow-x-auto"><code class="language-bash">Authorization: Bearer &lt;your_token&gt;</code></pre>
+        <p class="text-gray-400 text-sm mt-3">Base URL: <code class="bg-gray-700 px-2 py-1 rounded">https://your-worker.workers.dev/api</code></p>
+      </div>
+
+      <!-- Authentication -->
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="bg-gradient-to-r from-red-900 to-orange-900 px-4 py-3">
+          <h3 class="font-semibold text-white">🔐 认证接口</h3>
+        </div>
+        <div class="p-4 space-y-4">
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-green-600 rounded text-xs font-bold">POST</span>
+              <code class="text-yellow-400">/api/auth/token</code>
+            </div>
+            <p class="text-gray-400 text-sm mb-3">获取访问 Token（普通用户）</p>
+            <pre class="bg-gray-900 p-3 rounded text-sm overflow-x-auto"><code class="language-json">{
+  "user_id": 123456789,
+  "pin": "123456"
+}</code></pre>
+            <p class="text-gray-500 text-xs mt-2">返回: <code>{ "token": "eyJ...", "expires_in": 3600 }</code></p>
+          </div>
+          
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-green-600 rounded text-xs font-bold">POST</span>
+              <code class="text-yellow-400">/api/auth/admin</code>
+            </div>
+            <p class="text-gray-400 text-sm mb-3">管理员认证（使用 API_SECRET）</p>
+            <pre class="bg-gray-900 p-3 rounded text-sm overflow-x-auto"><code class="language-json">{
+  "secret": "your_api_secret"
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Environment Variables API -->
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="bg-gradient-to-r from-green-900 to-emerald-900 px-4 py-3">
+          <h3 class="font-semibold text-white">🔑 环境变量 API</h3>
+        </div>
+        <div class="p-4 space-y-4">
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-blue-600 rounded text-xs font-bold">GET</span>
+              <code class="text-yellow-400">/api/envs</code>
+            </div>
+            <p class="text-gray-400 text-sm">获取所有环境变量列表</p>
+          </div>
+          
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-green-600 rounded text-xs font-bold">POST</span>
+              <code class="text-yellow-400">/api/envs</code>
+            </div>
+            <p class="text-gray-400 text-sm mb-3">添加环境变量</p>
+            <pre class="bg-gray-900 p-3 rounded text-sm overflow-x-auto"><code class="language-json">{
+  "name": "MY_VAR",
+  "value": "my_value",
+  "remarks": "备注说明"
+}</code></pre>
+          </div>
+          
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-yellow-600 rounded text-xs font-bold">PUT</span>
+              <code class="text-yellow-400">/api/envs/:id</code>
+            </div>
+            <p class="text-gray-400 text-sm mb-3">更新环境变量</p>
+            <pre class="bg-gray-900 p-3 rounded text-sm overflow-x-auto"><code class="language-json">{
+  "name": "MY_VAR",
+  "value": "new_value"
+}</code></pre>
+          </div>
+          
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-red-600 rounded text-xs font-bold">DELETE</span>
+              <code class="text-yellow-400">/api/envs/:id</code>
+            </div>
+            <p class="text-gray-400 text-sm">删除环境变量</p>
+          </div>
+
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-purple-600 rounded text-xs font-bold">PUT</span>
+              <code class="text-yellow-400">/api/envs/:id/enable</code>
+            </div>
+            <p class="text-gray-400 text-sm">启用环境变量</p>
+          </div>
+
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-gray-600 rounded text-xs font-bold">PUT</span>
+              <code class="text-yellow-400">/api/envs/:id/disable</code>
+            </div>
+            <p class="text-gray-400 text-sm">禁用环境变量</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tasks API -->
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="bg-gradient-to-r from-blue-900 to-indigo-900 px-4 py-3">
+          <h3 class="font-semibold text-white">📋 任务管理 API</h3>
+        </div>
+        <div class="p-4 space-y-4">
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-blue-600 rounded text-xs font-bold">GET</span>
+              <code class="text-yellow-400">/api/crons</code>
+            </div>
+            <p class="text-gray-400 text-sm">获取所有定时任务</p>
+          </div>
+          
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-green-600 rounded text-xs font-bold">POST</span>
+              <code class="text-yellow-400">/api/crons</code>
+            </div>
+            <p class="text-gray-400 text-sm mb-3">创建定时任务</p>
+            <pre class="bg-gray-900 p-3 rounded text-sm overflow-x-auto"><code class="language-json">{
+  "name": "测试任务",
+  "command": "task test.js",
+  "schedule": "0 8 * * *"
+}</code></pre>
+          </div>
+          
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-purple-600 rounded text-xs font-bold">PUT</span>
+              <code class="text-yellow-400">/api/crons/:id/run</code>
+            </div>
+            <p class="text-gray-400 text-sm">立即运行任务</p>
+          </div>
+
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-orange-600 rounded text-xs font-bold">PUT</span>
+              <code class="text-yellow-400">/api/crons/:id/stop</code>
+            </div>
+            <p class="text-gray-400 text-sm">停止运行中的任务</p>
+          </div>
+
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-blue-600 rounded text-xs font-bold">GET</span>
+              <code class="text-yellow-400">/api/crons/:id/log</code>
+            </div>
+            <p class="text-gray-400 text-sm">获取任务日志</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subscriptions API -->
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="bg-gradient-to-r from-purple-900 to-pink-900 px-4 py-3">
+          <h3 class="font-semibold text-white">📦 订阅管理 API</h3>
+        </div>
+        <div class="p-4 space-y-4">
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-blue-600 rounded text-xs font-bold">GET</span>
+              <code class="text-yellow-400">/api/subscriptions</code>
+            </div>
+            <p class="text-gray-400 text-sm">获取所有订阅</p>
+          </div>
+          
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-green-600 rounded text-xs font-bold">POST</span>
+              <code class="text-yellow-400">/api/subscriptions</code>
+            </div>
+            <p class="text-gray-400 text-sm mb-3">添加订阅</p>
+            <pre class="bg-gray-900 p-3 rounded text-sm overflow-x-auto"><code class="language-json">{
+  "name": "我的订阅",
+  "url": "https://github.com/user/repo",
+  "schedule": "0 0 * * *",
+  "branch": "main"
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scripts API -->
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="bg-gradient-to-r from-cyan-900 to-teal-900 px-4 py-3">
+          <h3 class="font-semibold text-white">📁 脚本管理 API</h3>
+        </div>
+        <div class="p-4 space-y-4">
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-blue-600 rounded text-xs font-bold">GET</span>
+              <code class="text-yellow-400">/api/scripts</code>
+            </div>
+            <p class="text-gray-400 text-sm">获取脚本目录树</p>
+          </div>
+          
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-blue-600 rounded text-xs font-bold">GET</span>
+              <code class="text-yellow-400">/api/scripts/:filename?path=</code>
+            </div>
+            <p class="text-gray-400 text-sm">获取脚本内容</p>
+          </div>
+
+          <div class="bg-gray-700 rounded-lg p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="px-2 py-1 bg-green-600 rounded text-xs font-bold">POST</span>
+              <code class="text-yellow-400">/api/scripts</code>
+            </div>
+            <p class="text-gray-400 text-sm mb-3">上传/更新脚本</p>
+            <pre class="bg-gray-900 p-3 rounded text-sm overflow-x-auto"><code class="language-json">{
+  "filename": "test.js",
+  "content": "console.log('hello');",
+  "path": ""
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Code Examples -->
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="bg-gradient-to-r from-gray-700 to-gray-600 px-4 py-3">
+          <h3 class="font-semibold text-white">💻 代码示例</h3>
+        </div>
+        <div class="p-4 space-y-4">
+          <div class="bg-gray-700 rounded-lg p-4">
+            <h4 class="text-green-400 font-semibold mb-3">JavaScript / Node.js</h4>
+            <pre class="bg-gray-900 p-3 rounded text-sm overflow-x-auto"><code class="language-javascript">// 获取 Token
+const authRes = await fetch('https://your-worker.dev/api/auth/token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ user_id: 123456, pin: '123456' })
+});
+const { token } = await authRes.json();
+
+// 添加环境变量
+const res = await fetch('https://your-worker.dev/api/envs', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  },
+  body: JSON.stringify({
+    name: 'MY_COOKIE',
+    value: 'abc123',
+    remarks: '我的Cookie'
+  })
+});
+console.log(await res.json());</code></pre>
+          </div>
+
+          <div class="bg-gray-700 rounded-lg p-4">
+            <h4 class="text-blue-400 font-semibold mb-3">cURL</h4>
+            <pre class="bg-gray-900 p-3 rounded text-sm overflow-x-auto"><code class="language-bash"># 获取 Token
+curl -X POST https://your-worker.dev/api/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 123456, "pin": "123456"}'
+
+# 添加环境变量
+curl -X POST https://your-worker.dev/api/envs \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"name": "MY_VAR", "value": "my_value"}'
+
+# 获取环境变量列表
+curl https://your-worker.dev/api/envs \
+  -H "Authorization: Bearer YOUR_TOKEN"</code></pre>
+          </div>
+
+          <div class="bg-gray-700 rounded-lg p-4">
+            <h4 class="text-yellow-400 font-semibold mb-3">Python</h4>
+            <pre class="bg-gray-900 p-3 rounded text-sm overflow-x-auto"><code class="language-python">import requests
+
+BASE_URL = 'https://your-worker.dev/api'
+
+# 获取 Token
+auth_res = requests.post(f'{BASE_URL}/auth/token', json={
+    'user_id': 123456,
+    'pin': '123456'
+})
+token = auth_res.json()['token']
+
+headers = {'Authorization': f'Bearer {token}'}
+
+# 添加环境变量
+res = requests.post(f'{BASE_URL}/envs', json={
+    'name': 'MY_VAR',
+    'value': 'my_value'
+}, headers=headers)
+print(res.json())</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full Code Tab -->
+    <div id="content-full" class="hidden">
+      <div class="bg-gray-800 rounded-xl overflow-hidden">
+        <div class="bg-gray-700 px-4 py-3 flex items-center justify-between">
+          <h3 class="font-semibold">📜 完整代码 (index.ts)</h3>
+          <button onclick="copyCode()" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition">
+            📋 复制代码
+          </button>
+        </div>
+        <div class="code-container p-4">
+          <pre><code class="language-javascript" id="full-code">// src/index.ts - 青龙面板 Bot v5.0 多用户 API 版
+
+// ==================== 类型定义 ====================
+interface UserConfig {
+  odl_base_url: string;
+  ql_client_id: string;
+  ql_client_secret: string;
+}
+
+interface EncryptedData {
+  salt: string;      // Base64
+  iv: string;        // Base64
+  data: string;      // Base64 encrypted
+  tag: string;       // Base64 auth tag
+}
+
+interface UserMeta {
+  odl_id: number;
+  username?: string;
+  first_name?: string;
+  created_at: number;
+  last_active: number;
+}
+
+// ==================== 常量配置 ====================
+var BOT_COMMANDS = [
+  { command: "start", description: "开始使用" },
+  { command: "tasks", description: "任务管理" },
+  { command: "envs", description: "环境变量" },
+  { command: "subs", description: "订阅管理" },
+  { command: "deps", description: "依赖管理" },
+  { command: "scripts", description: "脚本管理" },
+  { command: "myconfig", description: "我的配置" },
+  { command: "help", description: "帮助信息" }
+];
+
+var ADMIN_COMMANDS = [
+  ...BOT_COMMANDS,
+  { command: "users", description: "用户管理(管理员)" }
+];
+
+var userStates = new Map();
+var userSessions = new Map(); // 存储已验证用户的解密配置
+var SESSION_TIMEOUT = 30 * 60 * 1000; // 30分钟会话超时
+var API_TOKEN_EXPIRY = 3600 * 1000; // API Token 1小时过期
+
+var REQUEST_TIMEOUT = 10000;
+var PBKDF2_ITERATIONS = 100000;
+
+// API Token 存储
+var apiTokens = new Map(); // token -> { odl_id, config, expiry }
+
+// ==================== 加密工具函数 ====================
+
+// 将字符串转为 ArrayBuffer
+function str2ab(str) {
+  const encoder = new TextEncoder();
+  return encoder.encode(str);
+}
+
+// 将 ArrayBuffer 转为 Base64
+function ab2base64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// 将 Base64 转为 ArrayBuffer
+function base642ab(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+// 从 PIN 派生加密密钥
+async function deriveKey(pin, odl_id, salt) {
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    str2ab(pin + "_" + odl_id),
+    "PBKDF2",
+    false,
+    ["deriveBits", "deriveKey"]
+  );
+  
+  return await crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: PBKDF2_ITERATIONS,
+      hash: "SHA-256"
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+// 加密用户配置
+async function encryptConfig(config, pin, odl_id) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(pin, odl_id, salt);
+  
+  const plaintext = JSON.stringify(config);
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: iv },
+    key,
+    str2ab(plaintext)
+  );
+  
+  // AES-GCM 的输出包含密文和认证标签
+  const encryptedArray = new Uint8Array(encrypted);
+  const data = encryptedArray.slice(0, -16);
+  const tag = encryptedArray.slice(-16);
+  
+  return {
+    salt: ab2base64(salt),
+    iv: ab2base64(iv),
+    data: ab2base64(data),
+    tag: ab2base64(tag)
+  };
+}
+
+// 解密用户配置
+async function decryptConfig(encryptedData, pin, odl_id) {
+  try {
+    const salt = new Uint8Array(base642ab(encryptedData.salt));
+    const iv = new Uint8Array(base642ab(encryptedData.iv));
+    const data = new Uint8Array(base642ab(encryptedData.data));
+    const tag = new Uint8Array(base642ab(encryptedData.tag));
+    
+    const key = await deriveKey(pin, odl_id, salt);
+    
+    // 重新组合密文和标签
+    const combined = new Uint8Array(data.length + tag.length);
+    combined.set(data);
+    combined.set(tag, data.length);
+    
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: iv },
+      key,
+      combined
+    );
+    
+    const decoder = new TextDecoder();
+    return JSON.parse(decoder.decode(decrypted));
+  } catch (e) {
+    return null; // PIN 错误或数据损坏
+  }
+}
+
+// ==================== KV 存储操作 ====================
+
+// 获取用户加密配置
+async function getUserEncryptedConfig(env, odl_id) {
+  const data = await env.USER_CONFIGS.get("config:" + odl_id);
+  return data ? JSON.parse(data) : null;
+}
+
+// 保存用户加密配置
+async function saveUserEncryptedConfig(env, odl_id, encryptedConfig, meta) {
+  await env.USER_CONFIGS.put("config:" + odl_id, JSON.stringify(encryptedConfig));
+  await env.USER_CONFIGS.put("meta:" + odl_id, JSON.stringify(meta));
+  
+  // 更新用户列表
+  const userList = await getUserList(env);
+  if (!userList.includes(odl_id)) {
+    userList.push(odl_id);
+    await env.USER_CONFIGS.put("user_list", JSON.stringify(userList));
+  }
+}
+
+// 删除用户配置
+async function deleteUserConfig(env, odl_id) {
+  await env.USER_CONFIGS.delete("config:" + odl_id);
+  await env.USER_CONFIGS.delete("meta:" + odl_id);
+  
+  const userList = await getUserList(env);
+  const newList = userList.filter(id => id !== odl_id);
+  await env.USER_CONFIGS.put("user_list", JSON.stringify(newList));
+}
+
+// 获取用户列表
+async function getUserList(env) {
+  const data = await env.USER_CONFIGS.get("user_list");
+  return data ? JSON.parse(data) : [];
+}
+
+// 获取用户元数据
+async function getUserMeta(env, odl_id) {
+  const data = await env.USER_CONFIGS.get("meta:" + odl_id);
+  return data ? JSON.parse(data) : null;
+}
+
+// 黑名单操作
+async function isBlacklisted(env, odl_id) {
+  const data = await env.USER_CONFIGS.get("blacklist:" + odl_id);
+  return data === "true";
+}
+
+async function addToBlacklist(env, odl_id) {
+  await env.USER_CONFIGS.put("blacklist:" + odl_id, "true");
+}
+
+async function removeFromBlacklist(env, odl_id) {
+  await env.USER_CONFIGS.delete("blacklist:" + odl_id);
+}
+
+async function getBlacklist(env) {
+  const userList = await getUserList(env);
+  const blacklist = [];
+  for (const odl_id of userList) {
+    if (await isBlacklisted(env, odl_id)) {
+      blacklist.push(odl_id);
+    }
+  }
+  // 也检查不在用户列表中的黑名单
+  const allKeys = await env.USER_CONFIGS.list({ prefix: "blacklist:" });
+  for (const key of allKeys.keys) {
+    const odl_id = parseInt(key.name.replace("blacklist:", ""));
+    if (!blacklist.includes(odl_id)) {
+      blacklist.push(odl_id);
+    }
+  }
+  return blacklist;
+}
+
+// ==================== 会话管理 ====================
+
+function setSession(odl_id, config) {
+  userSessions.set(odl_id, {
+    config: config,
+    timestamp: Date.now()
+  });
+}
+
+function getSession(odl_id) {
+  const session = userSessions.get(odl_id);
+  if (!session) return null;
+  
+  if (Date.now() - session.timestamp > SESSION_TIMEOUT) {
+    userSessions.delete(odl_id);
+    return null;
+  }
+  
+  // 刷新时间戳
+  session.timestamp = Date.now();
+  return session.config;
+}
+
+function clearSession(odl_id) {
+  userSessions.delete(odl_id);
+}
+
+// ==================== 权限检查 ====================
+
+function isAdmin(odl_id, env) {
+  if (!env.ADMIN_USER_IDS) return false;
+  const admins = env.ADMIN_USER_IDS.split(",").map(s => s.trim());
+  return admins.includes(String(odl_id));
+}
+
+async function getUserConfig(odl_id, env) {
+  // 管理员使用默认配置
+  if (isAdmin(odl_id, env)) {
+    return {
+      ql_base_url: env.QL_BASE_URL,
+      ql_client_id: env.QL_CLIENT_ID,
+      ql_client_secret: env.QL_CLIENT_SECRET
+    };
+  }
+  
+  // 普通用户从会话获取
+  return getSession(odl_id);
+}
+
+// ==================== Telegram API ====================
+
+async function tgApi(token, method, body = {}) {
+  const resp = await fetch("https://api.telegram.org/bot" + token + "/" + method, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return resp.json();
+}
+
+async function sendMsg(env, chatId, text, opts = {}) {
+  return tgApi(env.TG_BOT_TOKEN, "sendMessage", {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+    ...opts
+  });
+}
+
+async function editMsg(env, chatId, msgId, text, opts = {}) {
+  return tgApi(env.TG_BOT_TOKEN, "editMessageText", {
+    chat_id: chatId,
+    message_id: msgId,
+    text,
+    parse_mode: "HTML",
+    ...opts
+  });
+}
+
+async function answerCb(env, cbId, text) {
+  return tgApi(env.TG_BOT_TOKEN, "answerCallbackQuery", {
+    callback_query_id: cbId,
+    text: text || ""
+  });
+}
+
+// ==================== 青龙 API ====================
+
+var qlTokenCache = new Map(); // userId -> { token, expiry }
+
+async function getQlToken(env, userConfig, odl_id) {
+  const cacheKey = odl_id;
+  const cached = qlTokenCache.get(cacheKey);
+  const now = Date.now();
+  
+  if (cached && cached.expiry > now + 300000) {
+    return cached.token;
+  }
+  
+  const url = userConfig.ql_base_url + "/open/auth/token?client_id=" + 
+    userConfig.ql_client_id + "&client_secret=" + userConfig.ql_client_secret;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  
+  try {
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    const data = await resp.json();
+    
+    if (data.code === 200) {
+      qlTokenCache.set(cacheKey, {
+        token: data.data.token,
+        expiry: now + data.data.expiration * 1000 - 120000
+      });
+      return data.data.token;
+    }
+    throw new Error(data.message || "获取Token失败");
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === "AbortError") {
+      throw new Error("连接超时，请检查青龙地址");
+    }
+    throw error;
+  }
+}
+
+async function qlApi(env, userConfig, odl_id, method, endpoint, body) {
+  const token = await getQlToken(env, userConfig, odl_id);
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  
+  try {
+    const opts = {
+      method,
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      signal: controller.signal
+    };
+    
+    if (body !== undefined && body !== null) {
+      opts.body = JSON.stringify(body);
+    }
+    
+    const resp = await fetch(userConfig.ql_base_url + endpoint, opts);
+    clearTimeout(timeoutId);
+    
+    if (!resp.ok) {
+      throw new Error("HTTP " + resp.status);
+    }
+    return resp.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === "AbortError") {
+      throw new Error("请求超时");
+    }
+    throw error;
+  }
+}
+
+// ==================== API 工具函数 ====================
+
+function generateToken() {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return ab2base64(arr).replace(/[+/=]/g, '').slice(0, 48);
+}
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization"
+    }
+  });
+}
+
+function errorResponse(message, status = 400) {
+  return jsonResponse({ error: true, message }, status);
+}
+
+async function validateApiToken(request, env) {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return null;
+  }
+  
+  const token = authHeader.slice(7);
+  const tokenData = apiTokens.get(token);
+  
+  if (!tokenData) {
+    return null;
+  }
+  
+  if (Date.now() > tokenData.expiry) {
+    apiTokens.delete(token);
+    return null;
+  }
+  
+  return tokenData;
+}
+
+// ==================== API 路由处理 ====================
+
+async function handleApiRequest(request, url, env) {
+  // CORS 预检
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization"
+      }
+    });
+  }
+
+  const path = url.pathname.replace("/api", "");
+  
+  // 认证接口 - 不需要 Token
+  if (path === "/auth/token" && request.method === "POST") {
+    return await handleAuthToken(request, env);
+  }
+  
+  if (path === "/auth/admin" && request.method === "POST") {
+    return await handleAdminAuth(request, env);
+  }
+
+  // 其他接口需要 Token 认证
+  const tokenData = await validateApiToken(request, env);
+  if (!tokenData) {
+    return errorResponse("Unauthorized: Invalid or expired token", 401);
+  }
+
+  const { config, odl_id } = tokenData;
+
+  // 环境变量 API
+  if (path === "/envs" && request.method === "GET") {
+    return await apiGetEnvs(env, config, odl_id);
+  }
+  if (path === "/envs" && request.method === "POST") {
+    return await apiCreateEnv(request, env, config, odl_id);
+  }
+  if (path.match(/^\/envs\/\d+$/) && request.method === "PUT") {
+    const id = path.split("/")[2];
+    return await apiUpdateEnv(request, env, config, odl_id, id);
+  }
+  if (path.match(/^\/envs\/\d+$/) && request.method === "DELETE") {
+    const id = path.split("/")[2];
+    return await apiDeleteEnv(env, config, odl_id, id);
+  }
+  if (path.match(/^\/envs\/\d+\/enable$/) && request.method === "PUT") {
+    const id = path.split("/")[2];
+    return await apiToggleEnv(env, config, odl_id, id, true);
+  }
+  if (path.match(/^\/envs\/\d+\/disable$/) && request.method === "PUT") {
+    const id = path.split("/")[2];
+    return await apiToggleEnv(env, config, odl_id, id, false);
+  }
+
+  // 任务 API
+  if (path === "/crons" && request.method === "GET") {
+    return await apiGetCrons(env, config, odl_id);
+  }
+  if (path === "/crons" && request.method === "POST") {
+    return await apiCreateCron(request, env, config, odl_id);
+  }
+  if (path.match(/^\/crons\/\d+$/) && request.method === "PUT") {
+    const id = path.split("/")[2];
+    return await apiUpdateCron(request, env, config, odl_id, id);
+  }
+  if (path.match(/^\/crons\/\d+$/) && request.method === "DELETE") {
+    const id = path.split("/")[2];
+    return await apiDeleteCron(env, config, odl_id, id);
+  }
+  if (path.match(/^\/crons\/\d+\/run$/) && request.method === "PUT") {
+    const id = path.split("/")[2];
+    return await apiRunCron(env, config, odl_id, id);
+  }
+  if (path.match(/^\/crons\/\d+\/stop$/) && request.method === "PUT") {
+    const id = path.split("/")[2];
+    return await apiStopCron(env, config, odl_id, id);
+  }
+  if (path.match(/^\/crons\/\d+\/log$/) && request.method === "GET") {
+    const id = path.split("/")[2];
+    return await apiGetCronLog(env, config, odl_id, id);
+  }
+
+  // 订阅 API
+  if (path === "/subscriptions" && request.method === "GET") {
+    return await apiGetSubs(env, config, odl_id);
+  }
+  if (path === "/subscriptions" && request.method === "POST") {
+    return await apiCreateSub(request, env, config, odl_id);
+  }
+  if (path.match(/^\/subscriptions\/\d+$/) && request.method === "DELETE") {
+    const id = path.split("/")[2];
+    return await apiDeleteSub(env, config, odl_id, id);
+  }
+  if (path.match(/^\/subscriptions\/\d+\/run$/) && request.method === "PUT") {
+    const id = path.split("/")[2];
+    return await apiRunSub(env, config, odl_id, id);
+  }
+
+  // 脚本 API
+  if (path === "/scripts" && request.method === "GET") {
+    return await apiGetScripts(env, config, odl_id);
+  }
+  if (path === "/scripts" && request.method === "POST") {
+    return await apiUploadScript(request, env, config, odl_id);
+  }
+  if (path.match(/^\/scripts\/[^/]+$/) && request.method === "GET") {
+    const filename = decodeURIComponent(path.split("/")[2]);
+    const scriptPath = url.searchParams.get("path") || "";
+    return await apiGetScriptContent(env, config, odl_id, filename, scriptPath);
+  }
+  if (path.match(/^\/scripts\/[^/]+$/) && request.method === "DELETE") {
+    const filename = decodeURIComponent(path.split("/")[2]);
+    const scriptPath = url.searchParams.get("path") || "";
+    return await apiDeleteScript(env, config, odl_id, filename, scriptPath);
+  }
+
+  // 依赖 API
+  if (path === "/dependencies" && request.method === "GET") {
+    const type = url.searchParams.get("type") || "nodejs";
+    return await apiGetDeps(env, config, odl_id, type);
+  }
+  if (path === "/dependencies" && request.method === "POST") {
+    return await apiCreateDep(request, env, config, odl_id);
+  }
+  if (path.match(/^\/dependencies\/\d+$/) && request.method === "DELETE") {
+    const id = path.split("/")[2];
+    return await apiDeleteDep(env, config, odl_id, id);
+  }
+
+  return errorResponse("Not Found", 404);
+}
+
+// ==================== API 认证处理 ====================
+
+async function handleAuthToken(request, env) {
+  try {
+    const body = await request.json();
+    const { user_id, pin } = body;
+    
+    if (!user_id || !pin) {
+      return errorResponse("Missing user_id or pin");
+    }
+    
+    // 检查黑名单
+    if (await isBlacklisted(env, user_id)) {
+      return errorResponse("User is blacklisted", 403);
+    }
+    
+    // 检查是否是管理员
+    if (isAdmin(user_id, env)) {
+      const config = {
+        ql_base_url: env.QL_BASE_URL,
+        ql_client_id: env.QL_CLIENT_ID,
+        ql_client_secret: env.QL_CLIENT_SECRET
+      };
+      
+      const token = generateToken();
+      apiTokens.set(token, {
+        odl_id: user_id,
+        config,
+        expiry: Date.now() + API_TOKEN_EXPIRY
+      });
+      
+      return jsonResponse({
+        token,
+        expires_in: API_TOKEN_EXPIRY / 1000,
+        user_type: "admin"
+      });
+    }
+    
+    // 普通用户 - 验证 PIN 并解密配置
+    const encryptedConfig = await getUserEncryptedConfig(env, user_id);
+    if (!encryptedConfig) {
+      return errorResponse("User not registered. Please setup via Telegram Bot first.", 404);
+    }
+    
+    const config = await decryptConfig(encryptedConfig, pin, user_id);
+    if (!config) {
+      return errorResponse("Invalid PIN", 401);
+    }
+    
+    const token = generateToken();
+    apiTokens.set(token, {
+      odl_id: user_id,
+      config,
+      expiry: Date.now() + API_TOKEN_EXPIRY
+    });
+    
+    // 更新最后活跃时间
+    const meta = await getUserMeta(env, user_id);
+    if (meta) {
+      meta.last_active = Date.now();
+      await env.USER_CONFIGS.put("meta:" + user_id, JSON.stringify(meta));
+    }
+    
+    return jsonResponse({
+      token,
+      expires_in: API_TOKEN_EXPIRY / 1000,
+      user_type: "user"
+    });
+  } catch (e) {
+    return errorResponse("Auth failed: " + e.message, 500);
+  }
+}
+
+async function handleAdminAuth(request, env) {
+  try {
+    const body = await request.json();
+    const { secret } = body;
+    
+    if (!secret || secret !== env.API_SECRET) {
+      return errorResponse("Invalid API secret", 401);
+    }
+    
+    const config = {
+      ql_base_url: env.QL_BASE_URL,
+      ql_client_id: env.QL_CLIENT_ID,
+      ql_client_secret: env.QL_CLIENT_SECRET
+    };
+    
+    const token = generateToken();
+    apiTokens.set(token, {
+      odl_id: 0, // 管理员 API
+      config,
+      expiry: Date.now() + API_TOKEN_EXPIRY
+    });
+    
+    return jsonResponse({
+      token,
+      expires_in: API_TOKEN_EXPIRY / 1000,
+      user_type: "api_admin"
+    });
+  } catch (e) {
+    return errorResponse("Auth failed: " + e.message, 500);
+  }
+}
+
+// ==================== API 环境变量处理 ====================
+
+async function apiGetEnvs(env, config, odl_id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "GET", "/open/envs", null);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiCreateEnv(request, env, config, odl_id) {
+  try {
+    const body = await request.json();
+    const { name, value, remarks } = body;
+    
+    if (!name || !value) {
+      return errorResponse("Missing name or value");
+    }
+    
+    const envData = [{ name, value }];
+    if (remarks) envData[0].remarks = remarks;
+    
+    const result = await qlApi(env, config, odl_id, "POST", "/open/envs", envData);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiUpdateEnv(request, env, config, odl_id, id) {
+  try {
+    const body = await request.json();
+    const { name, value, remarks } = body;
+    
+    const updateData = { id: parseInt(id) };
+    if (name) updateData.name = name;
+    if (value) updateData.value = value;
+    if (remarks !== undefined) updateData.remarks = remarks;
+    
+    const result = await qlApi(env, config, odl_id, "PUT", "/open/envs", updateData);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiDeleteEnv(env, config, odl_id, id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "DELETE", "/open/envs", [parseInt(id)]);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiToggleEnv(env, config, odl_id, id, enable) {
+  try {
+    const endpoint = enable ? "/open/envs/enable" : "/open/envs/disable";
+    const result = await qlApi(env, config, odl_id, "PUT", endpoint, [parseInt(id)]);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+// ==================== API 任务处理 ====================
+
+async function apiGetCrons(env, config, odl_id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "GET", "/open/crons", null);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiCreateCron(request, env, config, odl_id) {
+  try {
+    const body = await request.json();
+    const { name, command, schedule } = body;
+    
+    if (!name || !command || !schedule) {
+      return errorResponse("Missing name, command or schedule");
+    }
+    
+    const result = await qlApi(env, config, odl_id, "POST", "/open/crons", { name, command, schedule });
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiUpdateCron(request, env, config, odl_id, id) {
+  try {
+    const body = await request.json();
+    const updateData = { id: parseInt(id), ...body };
+    
+    const result = await qlApi(env, config, odl_id, "PUT", "/open/crons", updateData);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiDeleteCron(env, config, odl_id, id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "DELETE", "/open/crons", [parseInt(id)]);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiRunCron(env, config, odl_id, id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "PUT", "/open/crons/run", [parseInt(id)]);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiStopCron(env, config, odl_id, id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "PUT", "/open/crons/stop", [parseInt(id)]);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiGetCronLog(env, config, odl_id, id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "GET", "/open/crons/" + id + "/log", null);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+// ==================== API 订阅处理 ====================
+
+async function apiGetSubs(env, config, odl_id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "GET", "/open/subscriptions", null);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiCreateSub(request, env, config, odl_id) {
+  try {
+    const body = await request.json();
+    const { name, url, schedule, branch } = body;
+    
+    if (!name || !url) {
+      return errorResponse("Missing name or url");
+    }
+    
+    const subData = {
+      name,
+      url,
+      schedule: schedule || "0 0 * * *",
+      type: "public-repo"
+    };
+    if (branch) subData.branch = branch;
+    
+    const result = await qlApi(env, config, odl_id, "POST", "/open/subscriptions", subData);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiDeleteSub(env, config, odl_id, id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "DELETE", "/open/subscriptions", [parseInt(id)]);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiRunSub(env, config, odl_id, id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "PUT", "/open/subscriptions/run", [parseInt(id)]);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+// ==================== API 脚本处理 ====================
+
+async function apiGetScripts(env, config, odl_id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "GET", "/open/scripts", null);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiGetScriptContent(env, config, odl_id, filename, path) {
+  try {
+    const endpoint = "/open/scripts/" + encodeURIComponent(filename) + "?path=" + encodeURIComponent(path);
+    const result = await qlApi(env, config, odl_id, "GET", endpoint, null);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiUploadScript(request, env, config, odl_id) {
+  try {
+    const body = await request.json();
+    const { filename, content, path } = body;
+    
+    if (!filename || content === undefined) {
+      return errorResponse("Missing filename or content");
+    }
+    
+    const result = await qlApi(env, config, odl_id, "POST", "/open/scripts", {
+      filename,
+      content,
+      path: path || ""
+    });
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiDeleteScript(env, config, odl_id, filename, path) {
+  try {
+    const result = await qlApi(env, config, odl_id, "DELETE", "/open/scripts", {
+      filename,
+      path: path || ""
+    });
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+// ==================== API 依赖处理 ====================
+
+async function apiGetDeps(env, config, odl_id, type) {
+  try {
+    const result = await qlApi(env, config, odl_id, "GET", "/open/dependencies?type=" + type, null);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiCreateDep(request, env, config, odl_id) {
+  try {
+    const body = await request.json();
+    const { name, type } = body;
+    
+    if (!name) {
+      return errorResponse("Missing dependency name");
+    }
+    
+    const typeMap = { "python3": 0, "nodejs": 1, "linux": 2 };
+    const typeNum = typeMap[type] !== undefined ? typeMap[type] : 1;
+    
+    const names = Array.isArray(name) ? name : [name];
+    const depData = names.map(n => ({ name: n, type: typeNum }));
+    
+    const result = await qlApi(env, config, odl_id, "POST", "/open/dependencies", depData);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+async function apiDeleteDep(env, config, odl_id, id) {
+  try {
+    const result = await qlApi(env, config, odl_id, "DELETE", "/open/dependencies", [parseInt(id)]);
+    return jsonResponse(result);
+  } catch (e) {
+    return errorResponse(e.message, 500);
+  }
+}
+
+// ==================== 主处理逻辑 ====================
+
+var src_default = {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    
+    // API 路由
+    if (url.pathname.startsWith("/api")) {
+      return await handleApiRequest(request, url, env);
+    }
+    
+    if (url.pathname === "/set-webhook") {
+      if (url.searchParams.get("secret") !== env.WEBHOOK_SECRET) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      const webhookUrl = url.origin + "/webhook";
+      const resp = await tgApi(env.TG_BOT_TOKEN, "setWebhook", {
+        url: webhookUrl,
+        allowed_updates: ["message", "callback_query"]
+      });
+      return new Response(JSON.stringify({ webhookUrl, result: resp }, null, 2));
+    }
+    
+    if (url.pathname === "/health") {
+      return new Response("OK - v5.0 Multi-User API");
+    }
+    
+    if (url.pathname === "/webhook" && request.method === "POST") {
+      try {
+        const update = await request.json();
+        ctx.waitUntil(processUpdate(update, env));
+        return new Response("OK");
+      } catch (e) {
+        console.error("Webhook error:", e);
+        return new Response("Error", { status: 500 });
+      }
+    }
+    
+    return new Response("Qinglong Bot v5.0 Multi-User API");
+  }
+};
+
+async function processUpdate(update, env) {
+  try {
+    let odl_id, chatId, username, firstName;
+    
+    if (update.callback_query) {
+      odl_id = update.callback_query.from.id;
+      chatId = update.callback_query.message.chat.id;
+      username = update.callback_query.from.username;
+      firstName = update.callback_query.from.first_name;
+    } else if (update.message) {
+      odl_id = update.message.from.id;
+      chatId = update.message.chat.id;
+      username = update.message.from.username;
+      firstName = update.message.from.first_name;
+    } else {
+      return;
+    }
+    
+    // 检查黑名单
+    if (await isBlacklisted(env, odl_id)) {
+      await sendMsg(env, chatId, "⛔ 您已被禁止使用此 Bot");
+      return;
+    }
+    
+    // 处理回调
+    if (update.callback_query) {
+      await handleCallback(update.callback_query, env);
+      return;
+    }
+    
+    // 处理消息
+    if (update.message) {
+      await handleMessage(update.message, env);
+      return;
+    }
+  } catch (error) {
+    console.error("Process error:", error);
+    const chatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
+    if (chatId) {
+      await sendMsg(env, chatId, "❌ 错误: " + error.message);
+    }
+  }
+}
+
+async function handleMessage(msg, env) {
+  const chatId = msg.chat.id;
+  const odl_id = msg.from.id;
+  const text = (msg.text || "").trim();
+  const username = msg.from.username;
+  const firstName = msg.from.first_name;
+  
+  // 检查是否在输入状态
+  const state = userStates.get(odl_id);
+  if (state) {
+    await handleStateInput(msg, state, env);
+    return;
+  }
+  
+  // 处理命令
+  if (text.startsWith("/")) {
+    const cmd = text.split(" ")[0].split("@")[0];
+    
+    // 不需要验证的命令
+    if (cmd === "/start") {
+      return await cmdStart(chatId, odl_id, username, firstName, env);
+    }
+    if (cmd === "/help") {
+      return await cmdHelp(chatId, odl_id, env);
+    }
+    if (cmd === "/cancel") {
+      userStates.delete(odl_id);
+      return await sendMsg(env, chatId, "❌ 已取消");
+    }
+    
+    // 管理员命令
+    if (cmd === "/users" && isAdmin(odl_id, env)) {
+      return await cmdUsers(chatId, 0, env, null);
+    }
+    
+    // 我的配置
+    if (cmd === "/myconfig") {
+      return await cmdMyConfig(chatId, odl_id, env);
+    }
+    
+    // 需要验证的命令
+    const config = await getUserConfig(odl_id, env);
+    if (!config) {
+      // 检查是否有已保存的配置需要解锁
+      const hasConfig = await getUserEncryptedConfig(env, odl_id);
+      if (hasConfig) {
+        return await promptUnlock(chatId, odl_id, env);
+      } else {
+        return await promptSetup(chatId, odl_id, env);
+      }
+    }
+    
+    // 已验证，执行命令
+    switch (cmd) {
+      case "/tasks":
+        return await cmdTasks(chatId, odl_id, 0, env, config, null);
+      case "/envs":
+        return await cmdEnvs(chatId, odl_id, 0, env, config, null);
+      case "/subs":
+        return await cmdSubs(chatId, odl_id, 0, env, config, null);
+      case "/deps":
+        return await cmdDeps(chatId, odl_id, env, config, null);
+      case "/scripts":
+        return await cmdScripts(chatId, odl_id, "", 0, env, config, null);
+    }
+  }
+  
+  // 快捷菜单文本
+  if (text.includes("任务管理") || text.includes("环境变量") || 
+      text.includes("订阅管理") || text.includes("依赖管理") || 
+      text.includes("脚本管理")) {
+    const config = await getUserConfig(odl_id, env);
+    if (!config) {
+      const hasConfig = await getUserEncryptedConfig(env, odl_id);
+      if (hasConfig) {
+        return await promptUnlock(chatId, odl_id, env);
+      } else {
+        return await promptSetup(chatId, odl_id, env);
+      }
+    }
+    
+    if (text.includes("任务管理")) return await cmdTasks(chatId, odl_id, 0, env, config, null);
+    if (text.includes("环境变量")) return await cmdEnvs(chatId, odl_id, 0, env, config, null);
+    if (text.includes("订阅管理")) return await cmdSubs(chatId, odl_id, 0, env, config, null);
+    if (text.includes("依赖管理")) return await cmdDeps(chatId, odl_id, env, config, null);
+    if (text.includes("脚本管理")) return await cmdScripts(chatId, odl_id, "", 0, env, config, null);
+  }
+}
+
+// ==================== 用户设置流程 ====================
+
+async function promptSetup(chatId, odl_id, env) {
+  const kb = {
+    inline_keyboard: [
+      [{ text: "✅ 添加我的青龙面板", callback_data: "setup_start" }],
+      [{ text: "❌ 取消", callback_data: "setup_cancel" }]
+    ]
+  };
+  
+  await sendMsg(env, chatId, 
+    "👋 <b>欢迎使用青龙面板 Bot</b>\n\n" +
+    "您还没有配置青龙面板。\n\n" +
+    "🔐 <b>安全说明：</b>\n" +
+    "• 您的凭证将使用 PIN 加密存储\n" +
+    "• 只有您知道 PIN，任何人无法解密\n" +
+    "• 您可以随时删除自己的配置\n\n" +
+    "是否要添加您的青龙面板？",
+    { reply_markup: kb }
+  );
+}
+
+async function promptUnlock(chatId, odl_id, env) {
+  userStates.set(odl_id, { 
+    action: "unlock", 
+    chatId,
+    attempts: 0 
+  });
+  
+  await sendMsg(env, chatId,
+    "🔐 <b>请输入 PIN 码解锁</b>\n\n" +
+    "请输入您的 6 位数字 PIN 码来解锁青龙面板。\n\n" +
+    "💡 PIN 错误 5 次将锁定 10 分钟\n\n" +
+    "/cancel 取消",
+    { reply_markup: { inline_keyboard: [[{ text: "🗑️ 忘记PIN/删除配置", callback_data: "forget_pin" }]] } }
+  );
+}
+
+async function startSetup(chatId, odl_id, msgId, env) {
+  userStates.set(odl_id, {
+    action: "setup_url",
+    chatId,
+    msgId
+  });
+  
+  await editMsg(env, chatId, msgId,
+    "📝 <b>步骤 1/4：青龙面板地址</b>\n\n" +
+    "请输入您的青龙面板地址\n" +
+    "例如：<code>http://192.168.1.100:5700</code>\n\n" +
+    "⚠️ 请确保地址可以从公网访问\n\n" +
+    "/cancel 取消"
+  );
+}
+
+// ==================== 命令处理 ====================
+
+async function cmdStart(chatId, odl_id, username, firstName, env) {
+  const keyboard = {
+    keyboard: [
+      [{ text: "📋 任务管理" }, { text: "🔑 环境变量" }],
+      [{ text: "📦 订阅管理" }, { text: "📚 依赖管理" }],
+      [{ text: "📁 脚本管理" }, { text: "❓ 帮助" }]
+    ],
+    resize_keyboard: true,
+    persistent: true
+  };
+  
+  if (isAdmin(odl_id, env)) {
+    await sendMsg(env, chatId,
+      "🐉 <b>青龙面板 Bot v4.0</b>\n\n" +
+      "👑 <b>管理员模式</b>\n\n" +
+      "• 使用默认青龙配置\n" +
+      "• /users - 用户管理\n\n" +
+      "请选择操作：",
+      { reply_markup: keyboard }
+    );
+  } else {
+    const hasConfig = await getUserEncryptedConfig(env, odl_id);
+    const config = getSession(odl_id);
+    
+    if (config) {
+      await sendMsg(env, chatId,
+        "🐉 <b>青龙面板 Bot v4.0</b>\n\n" +
+        "✅ 已解锁，请选择操作：",
+        { reply_markup: keyboard }
+      );
+    } else if (hasConfig) {
+      await promptUnlock(chatId, odl_id, env);
+    } else {
+      await promptSetup(chatId, odl_id, env);
+    }
+  }
+}
+
+async function cmdHelp(chatId, odl_id, env) {
+  let text = "🐉 <b>青龙面板 Bot 帮助</b>\n\n";
+  text += "/tasks - 📋 任务管理\n";
+  text += "/envs - 🔑 环境变量\n";
+  text += "/subs - 📦 订阅管理\n";
+  text += "/deps - 📚 依赖管理\n";
+  text += "/scripts - 📁 脚本管理\n";
+  text += "/myconfig - ⚙️ 我的配置\n";
+  
+  if (isAdmin(odl_id, env)) {
+    text += "\n<b>👑 管理员命令：</b>\n";
+    text += "/users - 用户管理\n";
+  }
+  
+  text += "\n🔐 您的凭证已加密存储，只有您能解锁";
+  
+  await sendMsg(env, chatId, text);
+}
+
+async function cmdMyConfig(chatId, odl_id, env) {
+  if (isAdmin(odl_id, env)) {
+    return await sendMsg(env, chatId,
+      "👑 <b>管理员配置</b>\n\n" +
+      "您使用的是默认青龙配置（环境变量）\n" +
+      "URL: <code>" + (env.QL_BASE_URL || "未设置") + "</code>"
+    );
+  }
+  
+  const hasConfig = await getUserEncryptedConfig(env, odl_id);
+  const meta = await getUserMeta(env, odl_id);
+  
+  if (!hasConfig) {
+    return await promptSetup(chatId, odl_id, env);
+  }
+  
+  const isUnlocked = !!getSession(odl_id);
+  
+  let text = "⚙️ <b>我的配置</b>\n\n";
+  text += "状态: " + (isUnlocked ? "🔓 已解锁" : "🔒 已锁定") + "\n";
+  if (meta) {
+    text += "创建时间: " + new Date(meta.created_at).toLocaleString("zh-CN") + "\n";
+    text += "最后活跃: " + new Date(meta.last_active).toLocaleString("zh-CN") + "\n";
+  }
+  
+  const kb = [];
+  if (isUnlocked) {
+    kb.push([{ text: "🔒 锁定会话", callback_data: "lock_session" }]);
+  }
+  kb.push([{ text: "🔄 修改 PIN", callback_data: "change_pin" }]);
+  kb.push([{ text: "🗑️ 删除配置", callback_data: "delete_config" }]);
+  
+  await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: kb } });
+}
+
+// ==================== 管理员用户管理 ====================
+
+async function cmdUsers(chatId, page, env, msgId) {
+  const userList = await getUserList(env);
+  const blacklist = await getBlacklist(env);
+  
+  if (userList.length === 0 && blacklist.length === 0) {
+    const text = "👥 <b>用户管理</b>\n\n暂无用户";
+    if (msgId) return await editMsg(env, chatId, msgId, text);
+    return await sendMsg(env, chatId, text);
+  }
+  
+  const pageSize = 8;
+  const allUsers = [...new Set([...userList, ...blacklist])];
+  const totalPages = Math.ceil(allUsers.length / pageSize);
+  const p = Math.min(Math.max(0, page), totalPages - 1);
+  const items = allUsers.slice(p * pageSize, (p + 1) * pageSize);
+  
+  const keyboard = [];
+  
+  for (const odl_id of items) {
+    const meta = await getUserMeta(env, odl_id);
+    const isBanned = blacklist.includes(odl_id);
+    const icon = isBanned ? "🚫" : "👤";
+    const name = meta?.username || meta?.first_name || String(odl_id);
+    keyboard.push([{ 
+      text: icon + " " + name.slice(0, 20), 
+      callback_data: "user_" + odl_id 
+    }]);
+  }
+  
+  // 分页
+  const nav = [];
+  if (p > 0) nav.push({ text: "⬅️", callback_data: "users_" + (p - 1) });
+  nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "users_" + (p + 1) });
+  if (nav.length > 1) keyboard.push(nav);
+  
+  keyboard.push([{ text: "🔄 刷新", callback_data: "users_refresh" }]);
+  
+  const text = "👥 <b>用户管理</b>\n\n" +
+    "共 " + userList.length + " 个用户 | 🚫 " + blacklist.length + " 个黑名单";
+  
+  if (msgId) {
+    return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
+  }
+  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+async function showUser(chatId, msgId, targetUserId, env) {
+  const meta = await getUserMeta(env, targetUserId);
+  const hasConfig = await getUserEncryptedConfig(env, targetUserId);
+  const isBanned = await isBlacklisted(env, targetUserId);
+  
+  let text = "👤 <b>用户详情</b>\n\n";
+  text += "ID: <code>" + targetUserId + "</code>\n";
+  
+  if (meta) {
+    if (meta.username) text += "用户名: @" + meta.username + "\n";
+    if (meta.first_name) text += "名称: " + meta.first_name + "\n";
+    text += "注册时间: " + new Date(meta.created_at).toLocaleString("zh-CN") + "\n";
+    text += "最后活跃: " + new Date(meta.last_active).toLocaleString("zh-CN") + "\n";
+  }
+  
+  text += "配置状态: " + (hasConfig ? "✅ 已配置" : "❌ 未配置") + "\n";
+  text += "账号状态: " + (isBanned ? "🚫 已拉黑" : "✅ 正常") + "\n";
+  
+  const kb = [];
+  if (isBanned) {
+    kb.push([{ text: "✅ 解除拉黑", callback_data: "unban_" + targetUserId }]);
+  } else {
+    kb.push([{ text: "🚫 拉黑用户", callback_data: "ban_" + targetUserId }]);
+  }
+  if (hasConfig) {
+    kb.push([{ text: "🗑️ 删除配置", callback_data: "admindel_" + targetUserId }]);
+  }
+  kb.push([{ text: "⬅️ 返回列表", callback_data: "users_0" }]);
+  
+  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
+}
+
+// ==================== 功能命令（需要配置）====================
+
+function toArray(result) {
+  if (!result || result.code !== 200) return [];
+  const d = result.data;
+  if (Array.isArray(d)) return d;
+  if (d && Array.isArray(d.data)) return d.data;
+  return [];
+}
+
+async function cmdTasks(chatId, odl_id, page, env, config, msgId) {
+  const result = await qlApi(env, config, odl_id, "GET", "/open/crons", null);
+  const crons = toArray(result);
+  
+  if (crons.length === 0) {
+    const text = "📋 <b>任务管理</b>\n\n暂无任务";
+    const kb = { inline_keyboard: [[{ text: "➕ 新建任务", callback_data: "task_new" }]] };
+    if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: kb });
+    return await sendMsg(env, chatId, text, { reply_markup: kb });
+  }
+  
+  const pageSize = 8;
+  const totalPages = Math.ceil(crons.length / pageSize);
+  const p = Math.min(Math.max(0, page), totalPages - 1);
+  const items = crons.slice(p * pageSize, (p + 1) * pageSize);
+  
+  const keyboard = [];
+  for (const c of items) {
+    const icon = c.isDisabled ? "🔕" : c.isRunning ? "🏃" : "✅";
+    const name = (c.name || "未命名").slice(0, 22);
+    keyboard.push([{ text: icon + " " + name, callback_data: "cron_" + c.id }]);
+  }
+  
+  const nav = [];
+  if (p > 0) nav.push({ text: "⬅️", callback_data: "tasks_" + (p - 1) });
+  nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "tasks_" + (p + 1) });
+  keyboard.push(nav);
+  keyboard.push([
+    { text: "🔄 刷新", callback_data: "tasks_refresh_" + p },
+    { text: "➕ 新建", callback_data: "task_new" }
+  ]);
+  
+  const running = crons.filter(c => c.isRunning).length;
+  const enabled = crons.filter(c => !c.isDisabled).length;
+  const text = "📋 <b>任务管理</b>\n\n共 " + crons.length + " 个 | ✅" + enabled + " 🏃" + running;
+  
+  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
+  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+async function cmdEnvs(chatId, odl_id, page, env, config, msgId) {
+  const result = await qlApi(env, config, odl_id, "GET", "/open/envs", null);
+  const envs = toArray(result);
+  
+  if (envs.length === 0) {
+    const text = "🔑 <b>环境变量</b>\n\n暂无变量";
+    const kb = { inline_keyboard: [[{ text: "➕ 添加变量", callback_data: "env_add" }]] };
+    if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: kb });
+    return await sendMsg(env, chatId, text, { reply_markup: kb });
+  }
+  
+  const pageSize = 8;
+  const totalPages = Math.ceil(envs.length / pageSize);
+  const p = Math.min(Math.max(0, page), totalPages - 1);
+  const items = envs.slice(p * pageSize, (p + 1) * pageSize);
+  
+  const keyboard = [];
+  for (const e of items) {
+    const icon = e.status === 0 ? "✅" : "🔕";
+    const name = (e.name || "未命名").slice(0, 22);
+    keyboard.push([{ text: icon + " " + name, callback_data: "env_" + e.id }]);
+  }
+  
+  const nav = [];
+  if (p > 0) nav.push({ text: "⬅️", callback_data: "envs_" + (p - 1) });
+  nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "envs_" + (p + 1) });
+  keyboard.push(nav);
+  keyboard.push([
+    { text: "➕ 添加", callback_data: "env_add" },
+    { text: "🔄 刷新", callback_data: "envs_refresh_" + p }
+  ]);
+  
+  const text = "🔑 <b>环境变量</b>\n\n共 " + envs.length + " 个";
+  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
+  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+async function cmdSubs(chatId, odl_id, page, env, config, msgId) {
+  const result = await qlApi(env, config, odl_id, "GET", "/open/subscriptions", null);
+  const subs = toArray(result);
+  
+  if (subs.length === 0) {
+    const text = "📦 <b>订阅管理</b>\n\n暂无订阅";
+    const kb = { inline_keyboard: [[{ text: "➕ 添加订阅", callback_data: "sub_add" }]] };
+    if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: kb });
+    return await sendMsg(env, chatId, text, { reply_markup: kb });
+  }
+  
+  const pageSize = 8;
+  const totalPages = Math.ceil(subs.length / pageSize);
+  const p = Math.min(Math.max(0, page), totalPages - 1);
+  const items = subs.slice(p * pageSize, (p + 1) * pageSize);
+  
+  const keyboard = [];
+  for (const s of items) {
+    const icon = s.is_disabled ? "🔕" : "✅";
+    const name = (s.name || "未命名").slice(0, 22);
+    keyboard.push([{ text: icon + " " + name, callback_data: "sub_" + s.id }]);
+  }
+  
+  const nav = [];
+  if (p > 0) nav.push({ text: "⬅️", callback_data: "subs_" + (p - 1) });
+  nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "subs_" + (p + 1) });
+  keyboard.push(nav);
+  keyboard.push([
+    { text: "➕ 添加", callback_data: "sub_add" },
+    { text: "🔄 刷新", callback_data: "subs_refresh_" + p }
+  ]);
+  
+  const text = "📦 <b>订阅管理</b>\n\n共 " + subs.length + " 个";
+  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
+  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+async function cmdDeps(chatId, odl_id, env, config, msgId) {
+  const results = await Promise.allSettled([
+    qlApi(env, config, odl_id, "GET", "/open/dependencies?type=python3", null),
+    qlApi(env, config, odl_id, "GET", "/open/dependencies?type=nodejs", null),
+    qlApi(env, config, odl_id, "GET", "/open/dependencies?type=linux", null)
+  ]);
+  
+  const pythonDeps = results[0].status === "fulfilled" ? toArray(results[0].value) : [];
+  const nodeDeps = results[1].status === "fulfilled" ? toArray(results[1].value) : [];
+  const linuxDeps = results[2].status === "fulfilled" ? toArray(results[2].value) : [];
+  const total = pythonDeps.length + nodeDeps.length + linuxDeps.length;
+  
+  const kb = [
+    [{ text: "🐍 Python (" + pythonDeps.length + ")", callback_data: "dep_list_python3" }],
+    [{ text: "📦 Node.js (" + nodeDeps.length + ")", callback_data: "dep_list_nodejs" }],
+    [{ text: "🐧 Linux (" + linuxDeps.length + ")", callback_data: "dep_list_linux" }],
+    [{ text: "🔄 刷新", callback_data: "deps_refresh" }]
+  ];
+  
+  const text = "📚 <b>依赖管理</b>\n\n共 " + total + " 个依赖";
+  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
+  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: kb } });
+}
+
+async function cmdScripts(chatId, odl_id, folder, page, env, config, msgId) {
+  const result = await qlApi(env, config, odl_id, "GET", "/open/scripts", null);
+  
+  if (result.code !== 200) {
+    const text = "❌ 获取失败: " + (result.message || "未知错误");
+    if (msgId) return await editMsg(env, chatId, msgId, text);
+    return await sendMsg(env, chatId, text);
+  }
+  
+  const data = result.data || [];
+  let folders = [];
+  let files = [];
+  
+  if (!folder) {
+    for (const item of data) {
+      if (item.children && item.children.length > 0) {
+        folders.push(item.title);
+      } else if (item.title) {
+        files.push(item.title);
+      }
+    }
+  } else {
+    const findNode = (items, target) => {
+      for (const item of items) {
+        if (item.title === target) return item;
+        if (item.children) {
+          const found = findNode(item.children, target);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const node = findNode(data, folder);
+    if (node && node.children) {
+      for (const child of node.children) {
+        if (child.children && child.children.length > 0) {
+          folders.push(child.title);
+        } else if (child.title) {
+          files.push(child.title);
+        }
+      }
+    }
+  }
+  
+  const keyboard = [];
+  if (folder) {
+    keyboard.push([{ text: "⬅️ 返回根目录", callback_data: "scripts_root_0" }]);
+  }
+  
+  for (const fname of folders) {
+    keyboard.push([{ text: "📂 " + fname.slice(0, 28), callback_data: "sdir_" + encodeURIComponent(fname).slice(0, 50) }]);
+  }
+  
+  const pageSize = 5;
+  const totalPages = Math.max(1, Math.ceil(files.length / pageSize));
+  const p = Math.min(Math.max(0, page), totalPages - 1);
+  const pageFiles = files.slice(p * pageSize, (p + 1) * pageSize);
+  
+  for (const f of pageFiles) {
+    const displayName = f.length > 18 ? f.slice(0, 18) + ".." : f;
+    const path = folder ? folder + "/" + f : f;
+    const encodedPath = encodeURIComponent(path).slice(0, 40);
+    keyboard.push([
+      { text: "📄 " + displayName, callback_data: "scrview_" + encodedPath },
+      { text: "▶️", callback_data: "scrrun_" + encodedPath },
+      { text: "🗑️", callback_data: "scrdel_" + encodedPath }
+    ]);
+  }
+  
+  if (files.length > pageSize) {
+    const nav = [];
+    const folderParam = folder ? encodeURIComponent(folder).slice(0, 30) : "";
+    if (p > 0) nav.push({ text: "⬅️", callback_data: "scrp_" + folderParam + "_" + (p - 1) });
+    nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+    if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "scrp_" + folderParam + "_" + (p + 1) });
+    keyboard.push(nav);
+  }
+  
+  keyboard.push([{ text: "🔄 刷新", callback_data: folder ? "scr_refresh_" + encodeURIComponent(folder).slice(0, 40) : "scr_refresh_root" }]);
+  
+  const title = folder || "根目录";
+  const text = "📁 <b>脚本管理 - " + title + "</b>\n\n📂 " + folders.length + " 文件夹 | 📄 " + files.length + " 文件";
+  
+  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
+  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+// ==================== 回调处理 ====================
+
+async function handleCallback(cb, env) {
+  const chatId = cb.message.chat.id;
+  const msgId = cb.message.message_id;
+  const odl_id = cb.from.id;
+  const data = cb.data;
+  
+  await answerCb(env, cb.id, "⏳ 处理中...");
+  
+  if (data === "noop") return;
+  
+  // 设置流程
+  if (data === "setup_start") {
+    return await startSetup(chatId, odl_id, msgId, env);
+  }
+  if (data === "setup_cancel") {
+    userStates.delete(odl_id);
+    return await editMsg(env, chatId, msgId, "❌ 已取消设置");
+  }
+  
+  // 忘记 PIN
+  if (data === "forget_pin") {
+    const kb = {
+      inline_keyboard: [
+        [{ text: "⚠️ 确认删除", callback_data: "confirm_delete_config" }],
+        [{ text: "❌ 取消", callback_data: "cancel_delete" }]
+      ]
+    };
+    return await editMsg(env, chatId, msgId,
+      "⚠️ <b>忘记 PIN 码</b>\n\n" +
+      "由于 PIN 未存储，无法找回。\n" +
+      "您只能删除现有配置并重新设置。\n\n" +
+      "确定要删除您的配置吗？",
+      { reply_markup: kb }
+    );
+  }
+  
+  if (data === "confirm_delete_config") {
+    await deleteUserConfig(env, odl_id);
+    clearSession(odl_id);
+    userStates.delete(odl_id);
+    return await editMsg(env, chatId, msgId, "✅ 配置已删除，请使用 /start 重新设置");
+  }
+  
+  if (data === "cancel_delete") {
+    userStates.delete(odl_id);
+    return await editMsg(env, chatId, msgId, "❌ 已取消");
+  }
+  
+  // 用户配置操作
+  if (data === "lock_session") {
+    clearSession(odl_id);
+    return await editMsg(env, chatId, msgId, "🔒 会话已锁定，下次操作需要重新输入 PIN");
+  }
+  
+  if (data === "delete_config") {
+    const kb = {
+      inline_keyboard: [
+        [{ text: "⚠️ 确认删除", callback_data: "confirm_delete_config" }],
+        [{ text: "❌ 取消", callback_data: "myconfig_back" }]
+      ]
+    };
+    return await editMsg(env, chatId, msgId,
+      "⚠️ <b>删除配置</b>\n\n确定要删除您的青龙面板配置吗？\n此操作不可恢复！",
+      { reply_markup: kb }
+    );
+  }
+  
+  if (data === "myconfig_back") {
+    return await cmdMyConfig(chatId, odl_id, env);
+  }
+  
+  if (data === "change_pin") {
+    const config = getSession(odl_id);
+    if (!config) {
+      return await promptUnlock(chatId, odl_id, env);
+    }
+    userStates.set(odl_id, {
+      action: "change_pin",
+      chatId,
+      msgId,
+      config
+    });
+    return await editMsg(env, chatId, msgId,
+      "🔄 <b>修改 PIN</b>\n\n请输入新的 6 位数字 PIN 码\n\n/cancel 取消"
+    );
+  }
+  
+  // 管理员用户管理
+  if (data.startsWith("users_")) {
+    if (!isAdmin(odl_id, env)) return;
+    if (data === "users_refresh") {
+      return await cmdUsers(chatId, 0, env, msgId);
+    }
+    const page = parseInt(data.slice(6)) || 0;
+    return await cmdUsers(chatId, page, env, msgId);
+  }
+  
+  if (data.startsWith("user_")) {
+    if (!isAdmin(odl_id, env)) return;
+    const targetId = parseInt(data.slice(5));
+    return await showUser(chatId, msgId, targetId, env);
+  }
+  
+  if (data.startsWith("ban_")) {
+    if (!isAdmin(odl_id, env)) return;
+    const targetId = parseInt(data.slice(4));
+    await addToBlacklist(env, targetId);
+    clearSession(targetId);
+    return await showUser(chatId, msgId, targetId, env);
+  }
+  
+  if (data.startsWith("unban_")) {
+    if (!isAdmin(odl_id, env)) return;
+    const targetId = parseInt(data.slice(6));
+    await removeFromBlacklist(env, targetId);
+    return await showUser(chatId, msgId, targetId, env);
+  }
+  
+  if (data.startsWith("admindel_")) {
+    if (!isAdmin(odl_id, env)) return;
+    const targetId = parseInt(data.slice(9));
+    await deleteUserConfig(env, targetId);
+    clearSession(targetId);
+    return await cmdUsers(chatId, 0, env, msgId);
+  }
+  
+  // 需要配置的操作
+  const config = await getUserConfig(odl_id, env);
+  if (!config) {
+    const hasConfig = await getUserEncryptedConfig(env, odl_id);
+    if (hasConfig) {
+      await answerCb(env, cb.id, "🔒 请先解锁");
+      return await promptUnlock(chatId, odl_id, env);
+    } else {
+      return await promptSetup(chatId, odl_id, env);
+    }
+  }
+  
+  // 任务管理
+  if (data.startsWith("tasks_refresh_")) {
+    const page = parseInt(data.slice(14)) || 0;
+    return await cmdTasks(chatId, odl_id, page, env, config, msgId);
+  }
+  if (data.startsWith("tasks_")) {
+    const page = parseInt(data.slice(6)) || 0;
+    return await cmdTasks(chatId, odl_id, page, env, config, msgId);
+  }
+  if (data.startsWith("cron_")) {
+    return await handleCronCallback(chatId, msgId, odl_id, data, env, config);
+  }
+  if (data === "task_new") {
+    userStates.set(odl_id, { action: "new_cron", chatId, msgId });
+    return await editMsg(env, chatId, msgId,
+      "➕ <b>新建任务</b>\n\n格式: <code>名称|命令|定时</code>\n例: <code>测试|task test.js|0 8 * * *</code>\n\n/cancel 取消"
+    );
+  }
+  
+  // 环境变量
+  if (data.startsWith("envs_refresh_")) {
+    const page = parseInt(data.slice(13)) || 0;
+    return await cmdEnvs(chatId, odl_id, page, env, config, msgId);
+  }
+  if (data.startsWith("envs_")) {
+    const page = parseInt(data.slice(5)) || 0;
+    return await cmdEnvs(chatId, odl_id, page, env, config, msgId);
+  }
+  if (data.startsWith("env_")) {
+    return await handleEnvCallback(chatId, msgId, odl_id, data, env, config);
+  }
+  
+  // 订阅管理
+  if (data.startsWith("subs_refresh_")) {
+    const page = parseInt(data.slice(13)) || 0;
+    return await cmdSubs(chatId, odl_id, page, env, config, msgId);
+  }
+  if (data.startsWith("subs_")) {
+    const page = parseInt(data.slice(5)) || 0;
+    return await cmdSubs(chatId, odl_id, page, env, config, msgId);
+  }
+  if (data.startsWith("sub_")) {
+    return await handleSubCallback(chatId, msgId, odl_id, data, env, config);
+  }
+  
+  // 依赖管理
+  if (data === "deps_refresh") {
+    return await cmdDeps(chatId, odl_id, env, config, msgId);
+  }
+  if (data.startsWith("dep_")) {
+    return await handleDepCallback(chatId, msgId, odl_id, data, env, config);
+  }
+  if (data === "deps_main") {
+    return await cmdDeps(chatId, odl_id, env, config, msgId);
+  }
+  
+  // 脚本管理
+  if (data.startsWith("scripts_root_")) {
+    const page = parseInt(data.slice(13)) || 0;
+    return await cmdScripts(chatId, odl_id, "", page, env, config, msgId);
+  }
+  if (data.startsWith("sdir_")) {
+    const folder = decodeURIComponent(data.slice(5));
+    return await cmdScripts(chatId, odl_id, folder, 0, env, config, msgId);
+  }
+  if (data.startsWith("scrp_")) {
+    const rest = data.slice(5);
+    const lastUnderscore = rest.lastIndexOf("_");
+    const folderEncoded = rest.slice(0, lastUnderscore);
+    const page = parseInt(rest.slice(lastUnderscore + 1)) || 0;
+    const folder = folderEncoded ? decodeURIComponent(folderEncoded) : "";
+    return await cmdScripts(chatId, odl_id, folder, page, env, config, msgId);
+  }
+  if (data.startsWith("scr_refresh_")) {
+    const folderPart = data.slice(12);
+    const folder = folderPart === "root" ? "" : decodeURIComponent(folderPart);
+    return await cmdScripts(chatId, odl_id, folder, 0, env, config, msgId);
+  }
+  if (data.startsWith("scrview_") || data.startsWith("scrrun_") || data.startsWith("scrdel_")) {
+    return await handleScriptCallback(chatId, msgId, odl_id, data, env, config);
+  }
+}
+
+// ==================== 具体回调处理 ====================
+
+async function handleCronCallback(chatId, msgId, odl_id, data, env, config) {
+  if (data.startsWith("cron_run_")) {
+    const id = data.slice(9);
+    await qlApi(env, config, odl_id, "PUT", "/open/crons/run", [parseInt(id)]);
+    return await showCronDetail(chatId, msgId, odl_id, id, env, config);
+  }
+  if (data.startsWith("cron_stop_")) {
+    const id = data.slice(10);
+    await qlApi(env, config, odl_id, "PUT", "/open/crons/stop", [parseInt(id)]);
+    return await showCronDetail(chatId, msgId, odl_id, id, env, config);
+  }
+  if (data.startsWith("cron_en_")) {
+    const id = data.slice(8);
+    await qlApi(env, config, odl_id, "PUT", "/open/crons/enable", [parseInt(id)]);
+    return await showCronDetail(chatId, msgId, odl_id, id, env, config);
+  }
+  if (data.startsWith("cron_dis_")) {
+    const id = data.slice(9);
+    await qlApi(env, config, odl_id, "PUT", "/open/crons/disable", [parseInt(id)]);
+    return await showCronDetail(chatId, msgId, odl_id, id, env, config);
+  }
+  if (data.startsWith("cron_del_")) {
+    const id = data.slice(9);
+    await qlApi(env, config, odl_id, "DELETE", "/open/crons", [parseInt(id)]);
+    return await cmdTasks(chatId, odl_id, 0, env, config, msgId);
+  }
+  if (data.startsWith("cron_log_")) {
+    const id = data.slice(9);
+    const logRes = await qlApi(env, config, odl_id, "GET", "/open/crons/" + id + "/log", null);
+    let logContent = logRes.code === 200 ? (logRes.data || "暂无日志") : "获取日志失败";
+    if (logContent.length > 3000) {
+      logContent = "...(已截取)\n" + logContent.slice(-3000);
+    }
+    const text = "📄 <b>任务日志</b>\n\n<pre>" + escapeHtml(logContent) + "</pre>";
+    const kb = [[
+      { text: "🔄 刷新", callback_data: "cron_log_" + id },
+      { text: "⬅️ 返回", callback_data: "cron_" + id }
+    ]];
+    return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
+  }
+  if (data.startsWith("cron_edit_")) {
+    const id = data.slice(10);
+    userStates.set(odl_id, { action: "edit_cron", cronId: id, chatId, msgId });
+    return await editMsg(env, chatId, msgId,
+      "✏️ <b>编辑定时</b>\n\n请输入新的 cron 表达式\n例: <code>0 8 * * *</code>\n\n/cancel 取消"
+    );
+  }
+  // 显示任务详情
+  const id = data.slice(5);
+  return await showCronDetail(chatId, msgId, odl_id, id, env, config);
+}
+
+async function showCronDetail(chatId, msgId, odl_id, cronId, env, config) {
+  const result = await qlApi(env, config, odl_id, "GET", "/open/crons/" + cronId, null);
+  if (result.code !== 200 || !result.data) {
+    return await editMsg(env, chatId, msgId, "❌ 任务不存在", {
+      reply_markup: { inline_keyboard: [[{ text: "⬅️ 返回", callback_data: "tasks_0" }]] }
+    });
+  }
+  
+  const c = result.data;
+  const status = c.isDisabled ? "🔕 已禁用" : c.isRunning ? "🏃 运行中" : "✅ 已启用";
+  let text = "📋 <b>" + (c.name || "未命名") + "</b>\n\n";
+  text += "状态: " + status + "\n";
+  text += "定时: <code>" + (c.schedule || "无") + "</code>\n";
+  text += "命令: <code>" + (c.command || "无") + "</code>";
+  
+  const kb = [];
+  if (c.isRunning) {
+    kb.push([{ text: "⏹️ 停止", callback_data: "cron_stop_" + cronId }]);
+  } else {
+    kb.push([{ text: "▶️ 运行", callback_data: "cron_run_" + cronId }]);
+  }
+  kb.push([
+    c.isDisabled ? { text: "✅ 启用", callback_data: "cron_en_" + cronId } : { text: "🔕 禁用", callback_data: "cron_dis_" + cronId },
+    { text: "✏️ 编辑", callback_data: "cron_edit_" + cronId }
+  ]);
+  kb.push([
+    { text: "📄 日志", callback_data: "cron_log_" + cronId },
+    { text: "🗑️ 删除", callback_data: "cron_del_" + cronId }
+  ]);
+  kb.push([{ text: "⬅️ 返回列表", callback_data: "tasks_0" }]);
+  
+  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
+}
+
+async function handleEnvCallback(chatId, msgId, odl_id, data, env, config) {
+  if (data === "env_add") {
+    userStates.set(odl_id, { action: "add_env", chatId, msgId });
+    return await editMsg(env, chatId, msgId,
+      "➕ <b>添加变量</b>\n\n格式: <code>名称=值</code>\n\n/cancel 取消"
+    );
+  }
+  if (data.startsWith("env_en_")) {
+    const id = data.slice(7);
+    await qlApi(env, config, odl_id, "PUT", "/open/envs/enable", [parseInt(id)]);
+    return await showEnvDetail(chatId, msgId, odl_id, id, env, config);
+  }
+  if (data.startsWith("env_dis_")) {
+    const id = data.slice(8);
+    await qlApi(env, config, odl_id, "PUT", "/open/envs/disable", [parseInt(id)]);
+    return await showEnvDetail(chatId, msgId, odl_id, id, env, config);
+  }
+  if (data.startsWith("env_del_")) {
+    const id = data.slice(8);
+    await qlApi(env, config, odl_id, "DELETE", "/open/envs", [parseInt(id)]);
+    return await cmdEnvs(chatId, odl_id, 0, env, config, msgId);
+  }
+  if (data.startsWith("env_edit_")) {
+    const id = data.slice(9);
+    userStates.set(odl_id, { action: "edit_env", envId: id, chatId, msgId });
+    return await editMsg(env, chatId, msgId,
+      "✏️ <b>编辑变量</b>\n\n格式: <code>名称=值</code>\n\n/cancel 取消"
+    );
+  }
+  // 显示变量详情
+  const id = data.slice(4);
+  return await showEnvDetail(chatId, msgId, odl_id, id, env, config);
+}
+
+async function showEnvDetail(chatId, msgId, odl_id, envId, env, config) {
+  const result = await qlApi(env, config, odl_id, "GET", "/open/envs", null);
+  const envs = toArray(result);
+  const e = envs.find(x => String(x.id) === String(envId));
+  
+  if (!e) {
+    return await editMsg(env, chatId, msgId, "❌ 变量不存在", {
+      reply_markup: { inline_keyboard: [[{ text: "⬅️ 返回", callback_data: "envs_0" }]] }
+    });
+  }
+  
+  const status = e.status === 0 ? "✅ 已启用" : "🔕 已禁用";
+  let text = "🔑 <b>" + e.name + "</b>\n\n";
+  text += "状态: " + status + "\n";
+  text += "值: <code>" + (e.value || "") + "</code>";
+  if (e.remarks) text += "\n备注: " + e.remarks;
+  
+  const kb = [];
+  kb.push([e.status === 0 
+    ? { text: "🔕 禁用", callback_data: "env_dis_" + envId }
+    : { text: "✅ 启用", callback_data: "env_en_" + envId }
+  ]);
+  kb.push([
+    { text: "✏️ 编辑", callback_data: "env_edit_" + envId },
+    { text: "🗑️ 删除", callback_data: "env_del_" + envId }
+  ]);
+  kb.push([{ text: "⬅️ 返回列表", callback_data: "envs_0" }]);
+  
+  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
+}
+
+async function handleSubCallback(chatId, msgId, odl_id, data, env, config) {
+  if (data === "sub_add") {
+    userStates.set(odl_id, { action: "add_sub", chatId, msgId });
+    return await editMsg(env, chatId, msgId,
+      "➕ <b>添加订阅</b>\n\n格式: <code>名称|URL|定时|分支</code>\n\n/cancel 取消"
+    );
+  }
+  if (data.startsWith("sub_run_")) {
+    const id = data.slice(8);
+    await qlApi(env, config, odl_id, "PUT", "/open/subscriptions/run", [parseInt(id)]);
+    return await showSubDetail(chatId, msgId, odl_id, id, env, config);
+  }
+  if (data.startsWith("sub_en_")) {
+    const id = data.slice(7);
+    await qlApi(env, config, odl_id, "PUT", "/open/subscriptions/enable", [parseInt(id)]);
+    return await showSubDetail(chatId, msgId, odl_id, id, env, config);
+  }
+  if (data.startsWith("sub_dis_")) {
+    const id = data.slice(8);
+    await qlApi(env, config, odl_id, "PUT", "/open/subscriptions/disable", [parseInt(id)]);
+    return await showSubDetail(chatId, msgId, odl_id, id, env, config);
+  }
+  if (data.startsWith("sub_del_")) {
+    const id = data.slice(8);
+    await qlApi(env, config, odl_id, "DELETE", "/open/subscriptions", [parseInt(id)]);
+    return await cmdSubs(chatId, odl_id, 0, env, config, msgId);
+  }
+  // 显示订阅详情
+  const id = data.slice(4);
+  return await showSubDetail(chatId, msgId, odl_id, id, env, config);
+}
+
+async function showSubDetail(chatId, msgId, odl_id, subId, env, config) {
+  const result = await qlApi(env, config, odl_id, "GET", "/open/subscriptions", null);
+  const subs = toArray(result);
+  const s = subs.find(x => String(x.id) === String(subId));
+  
+  if (!s) {
+    return await editMsg(env, chatId, msgId, "❌ 订阅不存在", {
+      reply_markup: { inline_keyboard: [[{ text: "⬅️ 返回", callback_data: "subs_0" }]] }
+    });
+  }
+  
+  const status = s.is_disabled ? "🔕 已禁用" : "✅ 已启用";
+  let text = "📦 <b>" + s.name + "</b>\n\n";
+  text += "状态: " + status + "\n";
+  text += "定时: <code>" + (s.schedule || "无") + "</code>\n";
+  text += "URL: <code>" + (s.url || "") + "</code>";
+  
+  const kb = [];
+  kb.push([{ text: "▶️ 运行", callback_data: "sub_run_" + subId }]);
+  kb.push([s.is_disabled 
+    ? { text: "✅ 启用", callback_data: "sub_en_" + subId }
+    : { text: "🔕 禁用", callback_data: "sub_dis_" + subId }
+  ]);
+  kb.push([{ text: "🗑️ 删除", callback_data: "sub_del_" + subId }]);
+  kb.push([{ text: "⬅️ 返回列表", callback_data: "subs_0" }]);
+  
+  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
+}
+
+async function handleDepCallback(chatId, msgId, odl_id, data, env, config) {
+  if (data.startsWith("dep_list_")) {
+    const type = data.slice(9);
+    return await showDepList(chatId, msgId, odl_id, type, 0, env, config);
+  }
+  if (data.startsWith("dep_page_")) {
+    const rest = data.slice(9);
+    const parts = rest.split("_");
+    const type = parts[0];
+    const page = parseInt(parts[1]) || 0;
+    return await showDepList(chatId, msgId, odl_id, type, page, env, config);
+  }
+  if (data.startsWith("dep_refresh_")) {
+    const type = data.slice(12);
+    return await showDepList(chatId, msgId, odl_id, type, 0, env, config);
+  }
+  if (data.startsWith("dep_add_")) {
+    const type = data.slice(8);
+    userStates.set(odl_id, { action: "add_dep", type, chatId, msgId });
+    const typeNames = { python3: "Python", nodejs: "Node.js", linux: "Linux" };
+    return await editMsg(env, chatId, msgId,
+      "➕ <b>添加 " + (typeNames[type] || type) + " 依赖</b>\n\n输入依赖名（空格分隔）\n\n/cancel 取消"
+    );
+  }
+  if (data.startsWith("dep_del_")) {
+    const rest = data.slice(8);
+    const parts = rest.split("_");
+    const id = parts[0];
+    const type = parts[1];
+    await qlApi(env, config, odl_id, "DELETE", "/open/dependencies", [parseInt(id)]);
+    return await showDepList(chatId, msgId, odl_id, type, 0, env, config);
+  }
+}
+
+async function showDepList(chatId, msgId, odl_id, type, page, env, config) {
+  const result = await qlApi(env, config, odl_id, "GET", "/open/dependencies?type=" + type, null);
+  const deps = toArray(result);
+  const typeNames = { python3: "🐍 Python", nodejs: "📦 Node.js", linux: "🐧 Linux" };
+  const typeName = typeNames[type] || type;
+  
+  if (deps.length === 0) {
+    const kb = [
+      [{ text: "➕ 添加依赖", callback_data: "dep_add_" + type }],
+      [{ text: "⬅️ 返回", callback_data: "deps_main" }]
+    ];
+    return await editMsg(env, chatId, msgId, typeName + " <b>依赖</b>\n\n暂无依赖", { reply_markup: { inline_keyboard: kb } });
+  }
+  
+  const pageSize = 6;
+  const totalPages = Math.ceil(deps.length / pageSize);
+  const p = Math.min(Math.max(0, page), totalPages - 1);
+  const items = deps.slice(p * pageSize, (p + 1) * pageSize);
+  
+  const keyboard = [];
+  for (const d of items) {
+    const icon = d.status === 0 ? "✅" : d.status === 1 ? "⏳" : "❌";
+    const name = (d.name || "未知").slice(0, 14);
+    keyboard.push([
+      { text: icon + " " + name, callback_data: "noop" },
+      { text: "🗑️", callback_data: "dep_del_" + d.id + "_" + type }
+    ]);
+  }
+  
+  const nav = [];
+  if (p > 0) nav.push({ text: "⬅️", callback_data: "dep_page_" + type + "_" + (p - 1) });
+  nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "dep_page_" + type + "_" + (p + 1) });
+  keyboard.push(nav);
+  keyboard.push([
+    { text: "➕ 添加", callback_data: "dep_add_" + type },
+    { text: "🔄 刷新", callback_data: "dep_refresh_" + type }
+  ]);
+  keyboard.push([{ text: "⬅️ 返回", callback_data: "deps_main" }]);
+  
+  const text = typeName + " <b>依赖</b>\n\n共 " + deps.length + " 个";
+  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+async function handleScriptCallback(chatId, msgId, odl_id, data, env, config) {
+  if (data.startsWith("scrview_")) {
+    const path = decodeURIComponent(data.slice(8));
+    return await sendScriptFile(chatId, msgId, odl_id, path, env, config);
+  }
+  if (data.startsWith("scrrun_")) {
+    const path = decodeURIComponent(data.slice(7));
+    const lastSlash = path.lastIndexOf("/");
+    const filename = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+    userStates.set(odl_id, { action: "add_script_cron", filename, path, chatId, msgId });
+    return await editMsg(env, chatId, msgId,
+      "⏰ <b>添加到运行列表</b>\n\n脚本: <code>" + filename + "</code>\n\n请输入 cron 表达式\n或输入 <code>d</code> 使用默认\n\n/cancel 取消"
+    );
+  }
+  if (data.startsWith("scrdel_")) {
+    const path = decodeURIComponent(data.slice(7));
+    const lastSlash = path.lastIndexOf("/");
+    const filename = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+    const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
+    await qlApi(env, config, odl_id, "DELETE", "/open/scripts", { filename, path: dir });
+    return await cmdScripts(chatId, odl_id, dir, 0, env, config, msgId);
+  }
+}
+
+async function sendScriptFile(chatId, msgId, odl_id, path, env, config) {
+  const lastSlash = path.lastIndexOf("/");
+  const filename = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+  const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
+  
+  try {
+    await editMsg(env, chatId, msgId, "⏳ 正在获取: <code>" + escapeHtml(filename) + "</code>...");
+    
+    const endpoint = "/open/scripts/" + encodeURIComponent(filename) + "?path=" + encodeURIComponent(dir);
+    const result = await qlApi(env, config, odl_id, "GET", endpoint, null);
+    
+    if (result.code !== 200 || !result.data) {
+      throw new Error(result.message || "获取失败");
+    }
+    
+    const content = result.data;
+    const formData = new FormData();
+    formData.append("chat_id", String(chatId));
+    
+    const blob = new Blob([content], { type: "text/plain" });
+    formData.append("document", blob, filename);
+    
+    const sizeKB = (content.length / 1024).toFixed(2);
+    let caption = "📄 <b>" + escapeHtml(filename) + "</b>\n\n";
+    caption += "📁 路径: <code>" + escapeHtml(path) + "</code>\n";
+    caption += "📏 大小: " + content.length + " 字节 (" + sizeKB + " KB)";
+    
+    formData.append("caption", caption);
+    formData.append("parse_mode", "HTML");
+    
+    const resp = await fetch("https://api.telegram.org/bot" + env.TG_BOT_TOKEN + "/sendDocument", {
+      method: "POST",
+      body: formData
+    });
+    
+    const sendResult = await resp.json();
+    if (!sendResult.ok) {
+      throw new Error(sendResult.description || "发送失败");
+    }
+    
+    const encodedPath = encodeURIComponent(path).slice(0, 40);
+    const kb = [
+      [
+        { text: "▶️ 添加任务", callback_data: "scrrun_" + encodedPath },
+        { text: "🗑️ 删除", callback_data: "scrdel_" + encodedPath }
+      ],
+      [
+        { text: "📤 重发", callback_data: "scrview_" + encodedPath },
+        { text: "⬅️ 返回", callback_data: dir ? "sdir_" + encodeURIComponent(dir).slice(0, 50) : "scripts_root_0" }
+      ]
+    ];
+    
+    return await editMsg(env, chatId, msgId, "✅ 已发送: <b>" + escapeHtml(filename) + "</b>", { reply_markup: { inline_keyboard: kb } });
+  } catch (error) {
+    const kb = [[{ text: "⬅️ 返回", callback_data: "scripts_root_0" }]];
+    return await editMsg(env, chatId, msgId, "❌ 失败: " + error.message, { reply_markup: { inline_keyboard: kb } });
+  }
+}
+
+// ==================== 状态输入处理 ====================
+
+async function handleStateInput(msg, state, env) {
+  const chatId = msg.chat.id;
+  const odl_id = msg.from.id;
+  const text = (msg.text || "").trim();
+  const username = msg.from.username;
+  const firstName = msg.from.first_name;
+  
+  if (text === "/cancel") {
+    userStates.delete(odl_id);
+    return await sendMsg(env, chatId, "❌ 已取消");
+  }
+  
+  // 解锁
+  if (state.action === "unlock") {
+    if (!/^\d{6}$/.test(text)) {
+      return await sendMsg(env, chatId, "❌ PIN 必须是 6 位数字");
+    }
+    
+    const encryptedConfig = await getUserEncryptedConfig(env, odl_id);
+    const config = await decryptConfig(encryptedConfig, text, odl_id);
+    
+    if (!config) {
+      state.attempts = (state.attempts || 0) + 1;
+      if (state.attempts >= 5) {
+        userStates.delete(odl_id);
+        return await sendMsg(env, chatId, "❌ PIN 错误次数过多，请稍后再试");
+      }
+      return await sendMsg(env, chatId, "❌ PIN 错误，还剩 " + (5 - state.attempts) + " 次机会");
+    }
+    
+    setSession(odl_id, config);
+    userStates.delete(odl_id);
+    
+    // 更新最后活跃时间
+    const meta = await getUserMeta(env, odl_id);
+    if (meta) {
+      meta.last_active = Date.now();
+      await env.USER_CONFIGS.put("meta:" + odl_id, JSON.stringify(meta));
+    }
+    
+    const keyboard = {
+      keyboard: [
+        [{ text: "📋 任务管理" }, { text: "🔑 环境变量" }],
+        [{ text: "📦 订阅管理" }, { text: "📚 依赖管理" }],
+        [{ text: "📁 脚本管理" }, { text: "❓ 帮助" }]
+      ],
+      resize_keyboard: true
+    };
+    
+    return await sendMsg(env, chatId, "🔓 <b>解锁成功！</b>\n\n请选择操作：", { reply_markup: keyboard });
+  }
+  
+  // 设置流程 - URL
+  if (state.action === "setup_url") {
+    if (!text.startsWith("http://") && !text.startsWith("https://")) {
+      return await sendMsg(env, chatId, "❌ 请输入有效的 URL（以 http:// 或 https:// 开头）");
+    }
+    state.ql_base_url = text.replace(/\/+$/, ""); // 移除末尾斜杠
+    state.action = "setup_client_id";
+    userStates.set(odl_id, state);
+    return await sendMsg(env, chatId,
+      "📝 <b>步骤 2/4：Client ID</b>\n\n" +
+      "请输入青龙面板的 Client ID\n\n" +
+      "💡 在青龙面板 系统设置 → 应用设置 中获取\n\n" +
+      "/cancel 取消"
+    );
+  }
+  
+  // 设置流程 - Client ID
+  if (state.action === "setup_client_id") {
+    if (text.length < 5) {
+      return await sendMsg(env, chatId, "❌ Client ID 格式不正确");
+    }
+    state.ql_client_id = text;
+    state.action = "setup_client_secret";
+    userStates.set(odl_id, state);
+    return await sendMsg(env, chatId,
+      "📝 <b>步骤 3/4：Client Secret</b>\n\n" +
+      "请输入青龙面板的 Client Secret\n\n" +
+      "/cancel 取消"
+    );
+  }
+  
+  // 设置流程 - Client Secret
+  if (state.action === "setup_client_secret") {
+    if (text.length < 5) {
+      return await sendMsg(env, chatId, "❌ Client Secret 格式不正确");
+    }
+    state.ql_client_secret = text;
+    
+    // 验证连接
+    await sendMsg(env, chatId, "⏳ 正在验证连接...");
+    
+    try {
+      const testConfig = {
+        ql_base_url: state.ql_base_url,
+        ql_client_id: state.ql_client_id,
+        ql_client_secret: state.ql_client_secret
+      };
+      await getQlToken(env, testConfig, odl_id);
+      
+      state.config = testConfig;
+      state.action = "setup_pin";
+      userStates.set(odl_id, state);
+      
+      return await sendMsg(env, chatId,
+        "✅ <b>连接成功！</b>\n\n" +
+        "📝 <b>步骤 4/4：设置 PIN</b>\n\n" +
+        "请设置 6 位数字 PIN 码用于加密您的凭证\n\n" +
+        "⚠️ <b>重要：请牢记此 PIN，无法找回！</b>\n\n" +
+        "/cancel 取消"
+      );
+    } catch (error) {
+      return await sendMsg(env, chatId,
+        "❌ 连接失败: " + error.message + "\n\n" +
+        "请检查配置后重新输入 Client Secret\n\n" +
+        "/cancel 取消"
+      );
+    }
+  }
+  
+  // 设置流程 - PIN
+  if (state.action === "setup_pin") {
+    if (!/^\d{6}$/.test(text)) {
+      return await sendMsg(env, chatId, "❌ PIN 必须是 6 位数字");
+    }
+    
+    await sendMsg(env, chatId, "⏳ 正在加密保存...");
+    
+    const encryptedConfig = await encryptConfig(state.config, text, odl_id);
+    const meta = {
+      odl_id: odl_id,
+      username: username,
+      first_name: firstName,
+      created_at: Date.now(),
+      last_active: Date.now()
+    };
+    
+    await saveUserEncryptedConfig(env, odl_id, encryptedConfig, meta);
+    setSession(odl_id, state.config);
+    userStates.delete(odl_id);
+    
+    const keyboard = {
+      keyboard: [
+        [{ text: "📋 任务管理" }, { text: "🔑 环境变量" }],
+        [{ text: "📦 订阅管理" }, { text: "📚 依赖管理" }],
+        [{ text: "📁 脚本管理" }, { text: "❓ 帮助" }]
+      ],
+      resize_keyboard: true
+    };
+    
+    return await sendMsg(env, chatId,
+      "🎉 <b>设置完成！</b>\n\n" +
+      "您的青龙面板已成功添加并加密存储。\n\n" +
+      "请选择操作：",
+      { reply_markup: keyboard }
+    );
+  }
+  
+  // 修改 PIN
+  if (state.action === "change_pin") {
+    if (!/^\d{6}$/.test(text)) {
+      return await sendMsg(env, chatId, "❌ PIN 必须是 6 位数字");
+    }
+    
+    const encryptedConfig = await encryptConfig(state.config, text, odl_id);
+    await env.USER_CONFIGS.put("config:" + odl_id, JSON.stringify(encryptedConfig));
+    
+    userStates.delete(odl_id);
+    return await sendMsg(env, chatId, "✅ PIN 已修改成功");
+  }
+  
+  // 以下需要已解锁的配置
+  const config = await getUserConfig(odl_id, env);
+  if (!config) {
+    userStates.delete(odl_id);
+    return await promptUnlock(chatId, odl_id, env);
+  }
+  
+  try {
+    // 新建任务
+    if (state.action === "new_cron") {
+      const parts = text.split("|");
+      if (parts.length < 3) {
+        return await sendMsg(env, chatId, "❌ 格式错误，请使用: 名称|命令|定时");
+      }
+      const result = await qlApi(env, config, odl_id, "POST", "/open/crons", {
+        name: parts[0].trim(),
+        command: parts[1].trim(),
+        schedule: parts[2].trim()
+      });
+      userStates.delete(odl_id);
+      if (result.code === 200) {
+        return await sendMsg(env, chatId, "✅ 任务创建成功");
+      }
+      return await sendMsg(env, chatId, "❌ 创建失败: " + (result.message || "未知错误"));
+    }
+    
+    // 编辑定时
+    if (state.action === "edit_cron") {
+      const result = await qlApi(env, config, odl_id, "PUT", "/open/crons", {
+        id: parseInt(state.cronId),
+        schedule: text
+      });
+      userStates.delete(odl_id);
+      if (result.code === 200) {
+        return await sendMsg(env, chatId, "✅ 定时已更新");
+      }
+      return await sendMsg(env, chatId, "❌ 更新失败: " + (result.message || "未知错误"));
+    }
+    
+    // 添加环境变量
+    if (state.action === "add_env") {
+      const eqIndex = text.indexOf("=");
+      if (eqIndex < 0) {
+        return await sendMsg(env, chatId, "❌ 格式错误，请使用: 名称=值");
+      }
+      const result = await qlApi(env, config, odl_id, "POST", "/open/envs", [{
+        name: text.slice(0, eqIndex).trim(),
+        value: text.slice(eqIndex + 1).trim()
+      }]);
+      userStates.delete(odl_id);
+      if (result.code === 200) {
+        return await sendMsg(env, chatId, "✅ 变量添加成功");
+      }
+      return await sendMsg(env, chatId, "❌ 添加失败: " + (result.message || "未知错误"));
+    }
+    
+    // 编辑环境变量
+    if (state.action === "edit_env") {
+      const eqIndex = text.indexOf("=");
+      if (eqIndex < 0) {
+        return await sendMsg(env, chatId, "❌ 格式错误，请使用: 名称=值");
+      }
+      const result = await qlApi(env, config, odl_id, "PUT", "/open/envs", {
+        id: parseInt(state.envId),
+        name: text.slice(0, eqIndex).trim(),
+        value: text.slice(eqIndex + 1).trim()
+      });
+      userStates.delete(odl_id);
+      if (result.code === 200) {
+        return await sendMsg(env, chatId, "✅ 变量更新成功");
+      }
+      return await sendMsg(env, chatId, "❌ 更新失败: " + (result.message || "未知错误"));
+    }
+    
+    // 添加订阅
+    if (state.action === "add_sub") {
+      const parts = text.split("|");
+      if (parts.length < 2) {
+        return await sendMsg(env, chatId, "❌ 格式错误，请使用: 名称|URL|定时|分支");
+      }
+      const body = {
+        name: parts[0].trim(),
+        url: parts[1].trim(),
+        schedule: parts[2] ? parts[2].trim() : "0 0 * * *",
+        type: "public-repo"
+      };
+      if (parts[3]) body.branch = parts[3].trim();
+      
+      const result = await qlApi(env, config, odl_id, "POST", "/open/subscriptions", body);
+      userStates.delete(odl_id);
+      if (result.code === 200) {
+        return await sendMsg(env, chatId, "✅ 订阅添加成功");
+      }
+      return await sendMsg(env, chatId, "❌ 添加失败: " + (result.message || "未知错误"));
+    }
+    
+    // 添加依赖
+    if (state.action === "add_dep") {
+      const depNames = text.split(/\s+/);
+      const typeMap = { python3: 0, nodejs: 1, linux: 2 };
+      const body = depNames.filter(n => n.trim()).map(n => ({
+        name: n.trim(),
+        type: typeMap[state.type]
+      }));
+      
+      if (body.length === 0) {
+        return await sendMsg(env, chatId, "❌ 请输入依赖名称");
+      }
+      
+      const result = await qlApi(env, config, odl_id, "POST", "/open/dependencies", body);
+      userStates.delete(odl_id);
+      if (result.code === 200) {
+        return await sendMsg(env, chatId, "✅ 依赖添加成功");
+      }
+      return await sendMsg(env, chatId, "❌ 添加失败: " + (result.message || "未知错误"));
+    }
+    
+    // 添加脚本任务
+    if (state.action === "add_script_cron") {
+      const schedule = text.toLowerCase() === "d" ? "0 0 * * *" : text;
+      const result = await qlApi(env, config, odl_id, "POST", "/open/crons", {
+        name: state.filename,
+        command: "task " + state.path,
+        schedule
+      });
+      userStates.delete(odl_id);
+      if (result.code === 200) {
+        return await sendMsg(env, chatId, "✅ 任务创建成功");
+      }
+      return await sendMsg(env, chatId, "❌ 创建失败: " + (result.message || "未知错误"));
+    }
+  } catch (error) {
+    userStates.delete(odl_id);
+    return await sendMsg(env, chatId, "❌ 错误: " + error.message);
+  }
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+export { src_default as default };</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Usage Tab -->
+    <div id="content-usage" class="hidden">
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="bg-gray-800 rounded-xl p-6">
+          <h3 class="text-xl font-bold text-blue-400 mb-4">📋 部署步骤</h3>
+          <ol class="space-y-3 text-gray-300">
+            <li class="flex gap-3">
+              <span class="bg-blue-600 w-6 h-6 rounded-full flex items-center justify-center text-sm shrink-0">1</span>
+              <span>创建 Cloudflare KV 命名空间 <code class="bg-gray-700 px-1 rounded">USER_CONFIGS</code></span>
+            </li>
+            <li class="flex gap-3">
+              <span class="bg-blue-600 w-6 h-6 rounded-full flex items-center justify-center text-sm shrink-0">2</span>
+              <span>在 wrangler.toml 中绑定 KV</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="bg-blue-600 w-6 h-6 rounded-full flex items-center justify-center text-sm shrink-0">3</span>
+              <span>设置环境变量（见右侧）</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="bg-blue-600 w-6 h-6 rounded-full flex items-center justify-center text-sm shrink-0">4</span>
+              <span>部署并设置 Webhook</span>
+            </li>
+          </ol>
+          
+          <div class="mt-4 p-3 bg-gray-700 rounded-lg">
+            <p class="text-sm font-mono text-gray-300"># wrangler.toml</p>
+            <pre class="text-xs text-green-400 mt-2">[[kv_namespaces]]
+binding = "USER_CONFIGS"
+id = "your-kv-namespace-id"</pre>
+          </div>
+        </div>
+        
+        <div class="bg-gray-800 rounded-xl p-6">
+          <h3 class="text-xl font-bold text-green-400 mb-4">🔧 环境变量</h3>
+          <div class="space-y-2 text-sm">
+            <div class="bg-gray-700 p-2 rounded">
+              <code class="text-yellow-400">TG_BOT_TOKEN</code>
+              <span class="text-gray-400 ml-2">Telegram Bot Token</span>
+            </div>
+            <div class="bg-gray-700 p-2 rounded">
+              <code class="text-yellow-400">WEBHOOK_SECRET</code>
+              <span class="text-gray-400 ml-2">Webhook 验证密钥</span>
+            </div>
+            <div class="bg-gray-700 p-2 rounded">
+              <code class="text-yellow-400">ADMIN_USER_IDS</code>
+              <span class="text-gray-400 ml-2">管理员 TG ID（逗号分隔）</span>
+            </div>
+            <div class="bg-gray-700 p-2 rounded border-l-2 border-purple-500">
+              <code class="text-purple-400">QL_BASE_URL</code>
+              <span class="text-gray-400 ml-2">管理员默认青龙地址</span>
+            </div>
+            <div class="bg-gray-700 p-2 rounded border-l-2 border-purple-500">
+              <code class="text-purple-400">QL_CLIENT_ID</code>
+              <span class="text-gray-400 ml-2">管理员默认 Client ID</span>
+            </div>
+            <div class="bg-gray-700 p-2 rounded border-l-2 border-purple-500">
+              <code class="text-purple-400">QL_CLIENT_SECRET</code>
+              <span class="text-gray-400 ml-2">管理员默认 Secret</span>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 mt-3">紫色边框：仅管理员使用的默认配置</p>
+        </div>
+        
+        <div class="bg-gray-800 rounded-xl p-6 md:col-span-2">
+          <h3 class="text-xl font-bold text-red-400 mb-4">🔐 安全说明</h3>
+          <div class="grid md:grid-cols-3 gap-4">
+            <div class="bg-gray-700 p-4 rounded-lg">
+              <h4 class="font-semibold text-red-300 mb-2">端到端加密</h4>
+              <p class="text-gray-400 text-sm">用户 PIN + UserID 派生 AES-256-GCM 密钥，PIN 不存储，部署者无法解密用户凭证</p>
+            </div>
+            <div class="bg-gray-700 p-4 rounded-lg">
+              <h4 class="font-semibold text-yellow-300 mb-2">会话管理</h4>
+              <p class="text-gray-400 text-sm">解密后的配置仅存内存，30分钟无操作自动过期，用户可主动锁定</p>
+            </div>
+            <div class="bg-gray-700 p-4 rounded-lg">
+              <h4 class="font-semibold text-green-300 mb-2">用户控制</h4>
+              <p class="text-gray-400 text-sm">用户可随时删除配置、修改PIN，管理员可管理用户但无法查看凭证</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-gray-800 mt-12 py-6">
+    <div class="max-w-7xl mx-auto px-4 text-center text-gray-400">
+      <p>青龙面板 Telegram Bot v5.0 - 多用户 API 版</p>
+      <p class="text-sm mt-2">🔐 AES-256-GCM + PBKDF2 端到端加密 | 🔌 RESTful API 支持</p>
+    </div>
+  </footer>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      hljs.highlightAll();
+    });
+
+    function showTab(tabName) {
+      document.querySelectorAll('[id^="content-"]').forEach(el => {
+        el.classList.add('hidden');
+      });
+      document.querySelectorAll('[id^="tab-"]').forEach(el => {
+        el.classList.remove('tab-active');
+        el.classList.add('text-gray-400');
+      });
+      document.getElementById('content-' + tabName).classList.remove('hidden');
+      const tab = document.getElementById('tab-' + tabName);
+      tab.classList.add('tab-active');
+      tab.classList.remove('text-gray-400');
+    }
+
+    function copyCode() {
+      const code = document.getElementById('full-code').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        const btn = event.target;
+        const originalText = btn.textContent;
+        btn.textContent = '✅ 已复制!';
+        btn.classList.remove('bg-blue-600');
+        btn.classList.add('bg-green-600');
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.classList.remove('bg-green-600');
+          btn.classList.add('bg-blue-600');
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
