@@ -1,4 +1,6 @@
-// src/index.ts - 青龙面板 Bot v3.4 脚本查看优化版
+// 青龙面板 Bot v5.3 - 完整多用户加密版 + API
+// 支持：KV可选绑定、多用户加密、管理员用户管理、REST API、脚本文件发送
+
 var BOT_COMMANDS = [
   { command: "start", description: "开始使用" },
   { command: "tasks", description: "任务管理" },
@@ -6,134 +8,47 @@ var BOT_COMMANDS = [
   { command: "subs", description: "订阅管理" },
   { command: "deps", description: "依赖管理" },
   { command: "scripts", description: "脚本管理" },
+  { command: "users", description: "用户管理(管理员)" },
+  { command: "myconfig", description: "我的配置" },
   { command: "help", description: "帮助信息" }
 ];
-var userStates = /* @__PURE__ */ new Map();
-var qlTokenCache = { token: null, expiry: 0 };
-var TOKEN_REFRESH_BUFFER = 3e5;
-var REQUEST_TIMEOUT = 1e4;
-var CACHE_TTL = {
-  tasks: 3e4,
-  envs: 6e4,
-  subs: 6e4,
-  deps: 12e4,
-  scripts: 3e4
-};
 
-var QlCache = class {
-  constructor(state, env) {
-    this.state = state;
-  }
-  async fetch(request) {
-    const url = new URL(request.url);
-    if (url.pathname === "/get") {
-      const key = url.searchParams.get("key");
-      const cached = await this.state.storage.get(key);
-      if (cached && cached.expiry > Date.now()) {
-        return new Response(JSON.stringify({
-          hit: true,
-          data: cached.data
-        }), {
-          headers: { "Content-Type": "application/json" }
-        });
-      }
-      return new Response(JSON.stringify({ hit: false }), {
-        headers: { "Content-Type": "application/json" }
-      });
-    }
-    if (url.pathname === "/set") {
-      const key = url.searchParams.get("key");
-      const ttl = parseInt(url.searchParams.get("ttl")) || 6e4;
-      const data = await request.json();
-      await this.state.storage.put(key, {
-        data,
-        expiry: Date.now() + ttl
-      });
-      return new Response(JSON.stringify({ success: true }));
-    }
-    if (url.pathname === "/delete") {
-      const key = url.searchParams.get("key");
-      await this.state.storage.delete(key);
-      return new Response(JSON.stringify({ success: true }));
-    }
-    if (url.pathname === "/clear") {
-      const prefix = url.searchParams.get("prefix");
-      if (prefix) {
-        const keys = await this.state.storage.list({ prefix });
-        await this.state.storage.delete(Array.from(keys.keys()));
-      } else {
-        await this.state.storage.deleteAll();
-      }
-      return new Response(JSON.stringify({ success: true }));
-    }
-    return new Response("Not Found", { status: 404 });
-  }
-};
+var userStates = new Map();
+var userSessions = new Map();
+var qlTokenCache = new Map();
+var REQUEST_TIMEOUT = 15000;
+var SESSION_TIMEOUT = 30 * 60 * 1000;
 
-async function getCacheStub(env, chatId) {
-  const id = env.QL_CACHE.idFromName("cache-" + chatId);
-  return env.QL_CACHE.get(id);
-}
+// ==================== Worker 入口 ====================
 
-async function getFromCache(env, chatId, key) {
-  try {
-    const stub = await getCacheStub(env, chatId);
-    const resp = await stub.fetch("https://cache/get?key=" + encodeURIComponent(key));
-    const result = await resp.json();
-    if (result.hit) {
-      console.log("Cache HIT:", key);
-      return result.data;
-    }
-    console.log("Cache MISS:", key);
-    return null;
-  } catch (error) {
-    console.error("Cache get error:", error);
-    return null;
-  }
-}
-
-async function setCache(env, chatId, key, data, ttl) {
-  try {
-    const stub = await getCacheStub(env, chatId);
-    await stub.fetch("https://cache/set?key=" + encodeURIComponent(key) + "&ttl=" + ttl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data)
-    });
-    console.log("Cache SET:", key, "TTL:", ttl);
-  } catch (error) {
-    console.error("Cache set error:", error);
-  }
-}
-
-async function clearCache(env, chatId, prefix) {
-  try {
-    const stub = await getCacheStub(env, chatId);
-    await stub.fetch("https://cache/clear?prefix=" + encodeURIComponent(prefix || ""));
-    console.log("Cache CLEAR:", prefix || "all");
-  } catch (error) {
-    console.error("Cache clear error:", error);
-  }
-}
-
-var src_default = {
+export default {
   async fetch(request, env, ctx) {
-    const url = new URL(request.url);
+    var url = new URL(request.url);
+    
+    if (url.pathname.startsWith("/api")) {
+      return await handleApiRequest(request, url, env);
+    }
+    
     if (url.pathname === "/set-webhook") {
       return handleSetWebhook(url, env);
     }
+    
     if (url.pathname === "/delete-webhook") {
       return handleDeleteWebhook(url, env);
     }
+    
     if (url.pathname === "/set-commands") {
       return handleSetCommands(url, env);
     }
+    
     if (url.pathname === "/health") {
-      return new Response("OK - v3.4 Script Detail Optimized");
+      var kvStatus = env.USER_CONFIGS ? "已绑定" : "未绑定";
+      return new Response("OK - v5.3 | KV: " + kvStatus);
     }
+    
     if (url.pathname === "/webhook" && request.method === "POST") {
       try {
-        const update = await request.json();
+        var update = await request.json();
         console.log("Received update:", JSON.stringify(update).slice(0, 500));
         ctx.waitUntil(processUpdate(update, env));
         return new Response("OK");
@@ -142,29 +57,30 @@ var src_default = {
         return new Response("Error", { status: 500 });
       }
     }
-    return new Response("Qinglong Bot v3.4 Script Detail Optimized");
+    
+    return new Response("Qinglong Bot v5.3 Multi-user");
   }
 };
+
+// ==================== Webhook 管理 ====================
 
 async function handleSetWebhook(url, env) {
   if (url.searchParams.get("secret") !== env.WEBHOOK_SECRET) {
     return new Response("Unauthorized", { status: 401 });
   }
-  const webhookUrl = url.origin + "/webhook";
-  const resp = await tgApi(env.TG_BOT_TOKEN, "setWebhook", {
+  var webhookUrl = url.origin + "/webhook";
+  var resp = await tgApi(env.TG_BOT_TOKEN, "setWebhook", {
     url: webhookUrl,
     allowed_updates: ["message", "callback_query"]
   });
-  return new Response(JSON.stringify({ webhookUrl, result: resp }, null, 2), {
-    headers: { "Content-Type": "application/json" }
-  });
+  return new Response(JSON.stringify({ webhookUrl: webhookUrl, result: resp }, null, 2));
 }
 
 async function handleDeleteWebhook(url, env) {
   if (url.searchParams.get("secret") !== env.WEBHOOK_SECRET) {
     return new Response("Unauthorized", { status: 401 });
   }
-  const resp = await tgApi(env.TG_BOT_TOKEN, "deleteWebhook");
+  var resp = await tgApi(env.TG_BOT_TOKEN, "deleteWebhook");
   return new Response(JSON.stringify(resp, null, 2));
 }
 
@@ -172,36 +88,153 @@ async function handleSetCommands(url, env) {
   if (url.searchParams.get("secret") !== env.WEBHOOK_SECRET) {
     return new Response("Unauthorized", { status: 401 });
   }
-  const resp = await tgApi(env.TG_BOT_TOKEN, "setMyCommands", { commands: BOT_COMMANDS });
+  var resp = await tgApi(env.TG_BOT_TOKEN, "setMyCommands", { commands: BOT_COMMANDS });
   return new Response(JSON.stringify(resp, null, 2));
 }
 
-async function tgApi(token, method, body = {}) {
-  const resp = await fetch("https://api.telegram.org/bot" + token + "/" + method, {
+// ==================== API 处理 ====================
+
+async function handleApiRequest(request, url, env) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization"
+      }
+    });
+  }
+
+  var authHeader = request.headers.get("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ") || authHeader.slice(7) !== env.API_SECRET) {
+    return jsonResponse({ error: true, message: "Unauthorized" }, 401);
+  }
+
+  var path = url.pathname.replace("/api", "");
+  var qlConfig = { baseUrl: env.QL_BASE_URL, clientId: env.QL_CLIENT_ID, clientSecret: env.QL_CLIENT_SECRET };
+
+  try {
+    if (path === "/envs" && request.method === "GET") {
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "GET", "/open/envs", null));
+    }
+    if (path === "/envs" && request.method === "POST") {
+      var body = await request.json();
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "POST", "/open/envs", [body]));
+    }
+    if (path.match(/^\/envs\/\d+$/) && request.method === "PUT") {
+      var id = path.split("/")[2];
+      var body = await request.json();
+      body.id = parseInt(id);
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "PUT", "/open/envs", body));
+    }
+    if (path.match(/^\/envs\/\d+$/) && request.method === "DELETE") {
+      var id = path.split("/")[2];
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "DELETE", "/open/envs", [parseInt(id)]));
+    }
+    if (path.match(/^\/envs\/\d+\/enable$/) && request.method === "PUT") {
+      var id = path.split("/")[2];
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "PUT", "/open/envs/enable", [parseInt(id)]));
+    }
+    if (path.match(/^\/envs\/\d+\/disable$/) && request.method === "PUT") {
+      var id = path.split("/")[2];
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "PUT", "/open/envs/disable", [parseInt(id)]));
+    }
+    if (path === "/crons" && request.method === "GET") {
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "GET", "/open/crons", null));
+    }
+    if (path === "/crons" && request.method === "POST") {
+      var body = await request.json();
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "POST", "/open/crons", body));
+    }
+    if (path.match(/^\/crons\/\d+$/) && request.method === "PUT") {
+      var id = path.split("/")[2];
+      var cronRes = await qlApi(env, qlConfig, "admin", "GET", "/open/crons/" + id, null);
+      if (cronRes.code !== 200 || !cronRes.data) {
+        return jsonResponse({ error: true, message: "Cron not found" }, 404);
+      }
+      var cron = cronRes.data;
+      var body = await request.json();
+      var updateData = {
+        id: parseInt(id),
+        name: body.name || cron.name,
+        command: body.command || cron.command,
+        schedule: body.schedule || cron.schedule,
+        labels: body.labels || cron.labels || []
+      };
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "PUT", "/open/crons", updateData));
+    }
+    if (path.match(/^\/crons\/\d+$/) && request.method === "DELETE") {
+      var id = path.split("/")[2];
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "DELETE", "/open/crons", [parseInt(id)]));
+    }
+    if (path.match(/^\/crons\/\d+\/run$/) && request.method === "PUT") {
+      var id = path.split("/")[2];
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "PUT", "/open/crons/run", [parseInt(id)]));
+    }
+    if (path.match(/^\/crons\/\d+\/stop$/) && request.method === "PUT") {
+      var id = path.split("/")[2];
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "PUT", "/open/crons/stop", [parseInt(id)]));
+    }
+    if (path.match(/^\/crons\/\d+\/log$/) && request.method === "GET") {
+      var id = path.split("/")[2];
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "GET", "/open/crons/" + id + "/log", null));
+    }
+    if (path === "/subscriptions" && request.method === "GET") {
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "GET", "/open/subscriptions", null));
+    }
+    if (path === "/subscriptions" && request.method === "POST") {
+      var body = await request.json();
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "POST", "/open/subscriptions", body));
+    }
+    if (path === "/scripts" && request.method === "GET") {
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "GET", "/open/scripts", null));
+    }
+    if (path === "/dependencies" && request.method === "GET") {
+      var type = url.searchParams.get("type") || "nodejs";
+      return jsonResponse(await qlApi(env, qlConfig, "admin", "GET", "/open/dependencies?type=" + type, null));
+    }
+    return jsonResponse({ error: true, message: "Not Found" }, 404);
+  } catch (e) {
+    return jsonResponse({ error: true, message: e.message }, 500);
+  }
+}
+
+function jsonResponse(data, status) {
+  return new Response(JSON.stringify(data), {
+    status: status || 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    }
+  });
+}
+
+// ==================== Telegram API ====================
+
+async function tgApi(token, method, body) {
+  var resp = await fetch("https://api.telegram.org/bot" + token + "/" + method, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body || {})
   });
   return resp.json();
 }
 
-async function sendMsg(env, chatId, text, opts = {}) {
-  return tgApi(env.TG_BOT_TOKEN, "sendMessage", {
+async function sendMsg(env, chatId, text, opts) {
+  return tgApi(env.TG_BOT_TOKEN, "sendMessage", Object.assign({
     chat_id: chatId,
-    text,
-    parse_mode: "HTML",
-    ...opts
-  });
+    text: text,
+    parse_mode: "HTML"
+  }, opts || {}));
 }
 
-async function editMsg(env, chatId, msgId, text, opts = {}) {
-  return tgApi(env.TG_BOT_TOKEN, "editMessageText", {
+async function editMsg(env, chatId, msgId, text, opts) {
+  return tgApi(env.TG_BOT_TOKEN, "editMessageText", Object.assign({
     chat_id: chatId,
     message_id: msgId,
-    text,
-    parse_mode: "HTML",
-    ...opts
-  });
+    text: text,
+    parse_mode: "HTML"
+  }, opts || {}));
 }
 
 async function answerCb(env, cbId, text) {
@@ -211,107 +244,185 @@ async function answerCb(env, cbId, text) {
   });
 }
 
-async function getQlToken(env) {
-  const now = Date.now();
-  if (qlTokenCache.token && qlTokenCache.expiry > now + TOKEN_REFRESH_BUFFER) {
-    return qlTokenCache.token;
-  }
-  console.log("Refreshing QL token...");
-  const start = Date.now();
-  const url = env.QL_BASE_URL + "/open/auth/token?client_id=" + env.QL_CLIENT_ID + "&client_secret=" + env.QL_CLIENT_SECRET;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5e3);
+// ==================== 加密函数 ====================
+
+async function deriveKey(pin, visitorId) {
+  var enc = new TextEncoder();
+  var keyMaterial = await crypto.subtle.importKey(
+    "raw", enc.encode(pin + ":" + visitorId), "PBKDF2", false, ["deriveKey"]
+  );
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt: enc.encode("ql-bot-salt-v2:" + visitorId), iterations: 100000, hash: "SHA-256" },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+async function encryptData(data, pin, visitorId) {
+  var key = await deriveKey(pin, visitorId);
+  var enc = new TextEncoder();
+  var iv = crypto.getRandomValues(new Uint8Array(12));
+  var encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, enc.encode(JSON.stringify(data)));
+  var combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(encrypted), iv.length);
+  return btoa(String.fromCharCode.apply(null, combined));
+}
+
+async function decryptData(encryptedStr, pin, visitorId) {
   try {
-    const resp = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    console.log("Token fetch time:", Date.now() - start, "ms");
-    const data = await resp.json();
-    if (data.code === 200) {
-      qlTokenCache.token = data.data.token;
-      qlTokenCache.expiry = now + data.data.expiration * 1e3 - 12e4;
-      console.log("Token cached until:", new Date(qlTokenCache.expiry).toISOString());
-      return qlTokenCache.token;
+    var key = await deriveKey(pin, visitorId);
+    var combined = Uint8Array.from(atob(encryptedStr), function(c) { return c.charCodeAt(0); });
+    var iv = combined.slice(0, 12);
+    var data = combined.slice(12);
+    var decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, key, data);
+    return JSON.parse(new TextDecoder().decode(decrypted));
+  } catch (e) {
+    return null;
+  }
+}
+
+// ==================== 用户配置管理 ====================
+
+function isAdmin(userId, env) {
+  if (!env.ADMIN_USER_IDS) return false;
+  return env.ADMIN_USER_IDS.split(",").map(function(s) { return s.trim(); }).includes(String(userId));
+}
+
+function hasKV(env) {
+  return env.USER_CONFIGS !== undefined && env.USER_CONFIGS !== null;
+}
+
+async function getUserConfig(env, visitorId) {
+  if (!hasKV(env)) return null;
+  try {
+    var data = await env.USER_CONFIGS.get("user:" + visitorId);
+    if (!data) return null;
+    return JSON.parse(data);
+  } catch (e) {
+    return null;
+  }
+}
+
+async function saveUserConfig(env, visitorId, config) {
+  if (!hasKV(env)) return false;
+  await env.USER_CONFIGS.put("user:" + visitorId, JSON.stringify(config));
+  return true;
+}
+
+async function deleteUserConfig(env, visitorId) {
+  if (!hasKV(env)) return false;
+  await env.USER_CONFIGS.delete("user:" + visitorId);
+  return true;
+}
+
+async function getAllUsers(env) {
+  if (!hasKV(env)) return [];
+  var list = await env.USER_CONFIGS.list({ prefix: "user:" });
+  var users = [];
+  for (var i = 0; i < list.keys.length; i++) {
+    var key = list.keys[i].name;
+    var visitorId = key.replace("user:", "");
+    var data = await env.USER_CONFIGS.get(key);
+    if (data) {
+      var config = JSON.parse(data);
+      users.push({
+        visitorId: visitorId,
+        createdAt: config.createdAt,
+        banned: config.banned || false
+      });
     }
-    throw new Error("获取青龙Token失败: " + (data.message || JSON.stringify(data)));
+  }
+  return users;
+}
+
+async function isUserBanned(env, userId) {
+  var config = await getUserConfig(env, userId);
+  return config && config.banned === true;
+}
+
+// ==================== 青龙 API ====================
+
+async function getQlToken(env, qlConfig, visitorId) {
+  var cacheKey = visitorId + ":" + qlConfig.baseUrl;
+  var cached = qlTokenCache.get(cacheKey);
+  var now = Date.now();
+  if (cached && cached.expiry > now + 300000) {
+    return cached.token;
+  }
+
+  var url = qlConfig.baseUrl + "/open/auth/token?client_id=" + qlConfig.clientId + "&client_secret=" + qlConfig.clientSecret;
+  var controller = new AbortController();
+  var timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+
+  try {
+    var resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    var data = await resp.json();
+    if (data.code === 200) {
+      qlTokenCache.set(cacheKey, {
+        token: data.data.token,
+        expiry: now + data.data.expiration * 1000 - 120000
+      });
+      return data.data.token;
+    }
+    throw new Error("获取Token失败: " + (data.message || "未知错误"));
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error.name === "AbortError") {
-      throw new Error("Token请求超时");
-    }
+    if (error.name === "AbortError") throw new Error("连接超时，请检查青龙地址");
     throw error;
   }
 }
 
-async function qlApi(env, method, endpoint, body) {
-  const start = Date.now();
-  const token = await getQlToken(env);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+async function qlApi(env, qlConfig, visitorId, method, endpoint, body) {
+  var token = await getQlToken(env, qlConfig, visitorId);
+  var controller = new AbortController();
+  var timeoutId = setTimeout(function() { controller.abort(); }, REQUEST_TIMEOUT);
+
   try {
-    const opts = {
-      method,
-      headers: {
-        "Authorization": "Bearer " + token,
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-      },
+    var opts = {
+      method: method,
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
       signal: controller.signal
     };
-    if (body !== void 0 && body !== null) {
+    if (body !== undefined && body !== null) {
       opts.body = JSON.stringify(body);
     }
-    const resp = await fetch(env.QL_BASE_URL + endpoint, opts);
+    var resp = await fetch(qlConfig.baseUrl + endpoint, opts);
     clearTimeout(timeoutId);
-    console.log("API", method, endpoint, "took", Date.now() - start, "ms");
-    if (!resp.ok) {
-      throw new Error("HTTP " + resp.status);
-    }
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
     return resp.json();
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error.name === "AbortError") {
-      throw new Error("请求超时(" + REQUEST_TIMEOUT / 1e3 + "s)");
-    }
+    if (error.name === "AbortError") throw new Error("请求超时");
     throw error;
   }
 }
 
-async function qlApiCached(env, chatId, cacheKey, ttl, method, endpoint, body) {
-  if (method !== "GET") {
-    const prefix = cacheKey.split(":")[0];
-    await clearCache(env, chatId, prefix);
-    return qlApi(env, method, endpoint, body);
+// ==================== 获取用户的青龙配置 ====================
+
+function getQlConfigForUser(env, userId) {
+  if (isAdmin(userId, env)) {
+    return {
+      baseUrl: env.QL_BASE_URL,
+      clientId: env.QL_CLIENT_ID,
+      clientSecret: env.QL_CLIENT_SECRET
+    };
   }
-  const cached = await getFromCache(env, chatId, cacheKey);
-  if (cached) {
-    return cached;
+  var session = userSessions.get(String(userId));
+  if (session && session.expiry > Date.now()) {
+    return session.qlConfig;
   }
-  const result = await qlApi(env, method, endpoint, body);
-  if (result && result.code === 200) {
-    await setCache(env, chatId, cacheKey, result, ttl);
-  }
-  return result;
+  return null;
 }
 
-function toArray(result) {
-  if (!result || result.code !== 200) return [];
-  const d = result.data;
-  if (Array.isArray(d)) return d;
-  if (d && Array.isArray(d.data)) return d.data;
-  return [];
-}
-
-function isAuth(userId, env) {
-  if (!env.ADMIN_USER_IDS) return true;
-  const allowed = env.ADMIN_USER_IDS.split(",").map(function(s) {
-    return s.trim();
-  });
-  return allowed.includes(String(userId));
-}
+// ==================== 消息处理 ====================
 
 async function processUpdate(update, env) {
   try {
-    let userId, chatId;
+    var userId, chatId;
     if (update.callback_query) {
       userId = update.callback_query.from.id;
       chatId = update.callback_query.message.chat.id;
@@ -319,101 +430,168 @@ async function processUpdate(update, env) {
       userId = update.message.from.id;
       chatId = update.message.chat.id;
     } else {
-      console.log("Unknown update type");
       return;
     }
-    if (!isAuth(userId, env)) {
-      await sendMsg(env, chatId, "⛔ 未授权用户 ID: " + userId + "");
+
+    console.log("Processing for user:", userId, "isAdmin:", isAdmin(userId, env));
+
+    if (await isUserBanned(env, userId)) {
+      await sendMsg(env, chatId, "⛔ 您已被管理员禁止使用");
       return;
     }
+
     if (update.callback_query) {
       await handleCallback(update.callback_query, env);
-      return;
-    }
-    if (update.message) {
+    } else if (update.message) {
       await handleMessage(update.message, env);
-      return;
     }
   } catch (error) {
     console.error("Process error:", error);
-    const chatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
-    if (chatId) {
-      await sendMsg(env, chatId, "❌ 错误: " + error.message);
+    var errChatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
+    if (errChatId) {
+      await sendMsg(env, errChatId, "❌ 错误: " + error.message);
     }
   }
 }
 
 async function handleMessage(msg, env) {
-  const chatId = msg.chat.id;
-  const userId = msg.from.id;
-  const text = (msg.text || "").trim();
-  console.log("Message from " + userId + ": " + text);
-  
-  const state = userStates.get(userId);
+  var chatId = msg.chat.id;
+  var userId = msg.from.id;
+  var text = (msg.text || "").trim();
+
+  console.log("Message from", userId, ":", text);
+
+  var state = userStates.get(userId);
   if (state) {
     await handleStateInput(msg, state, env);
     return;
   }
-  
+
   if (msg.document) {
+    if (!await checkUserAccess(env, chatId, userId)) return;
     await handleDocument(msg, env);
     return;
   }
-  
-  if (text && (text.includes("github.com") || text.includes("raw.githubusercontent.com") || text.includes("gitee.com") || text.match(/https?:\/\/.*\.(js|py|sh|ts)$/i))) {
+
+  if (text && (text.includes("github.com") || text.includes("raw.githubusercontent.com") ||
+      text.includes("gitee.com") || text.match(/https?:\/\/.*\.(js|py|sh|ts)$/i))) {
+    if (!await checkUserAccess(env, chatId, userId)) return;
     await handleFileUrl(msg, env);
     return;
   }
-  
+
   if (text.indexOf("任务管理") >= 0) {
-    return await cmdTasks(chatId, 0, env, null);
+    if (!await checkUserAccess(env, chatId, userId)) return;
+    return await cmdTasks(chatId, userId, 0, env, null);
   }
   if (text.indexOf("环境变量") >= 0) {
-    return await cmdEnvs(chatId, 0, env, null);
+    if (!await checkUserAccess(env, chatId, userId)) return;
+    return await cmdEnvs(chatId, userId, 0, env, null);
   }
   if (text.indexOf("订阅管理") >= 0) {
-    return await cmdSubs(chatId, 0, env, null);
+    if (!await checkUserAccess(env, chatId, userId)) return;
+    return await cmdSubs(chatId, userId, 0, env, null);
   }
   if (text.indexOf("依赖管理") >= 0) {
-    return await cmdDeps(chatId, env, null);
+    if (!await checkUserAccess(env, chatId, userId)) return;
+    return await cmdDeps(chatId, userId, env, null);
   }
   if (text.indexOf("脚本管理") >= 0) {
-    return await cmdScripts(chatId, "", 0, env, null);
+    if (!await checkUserAccess(env, chatId, userId)) return;
+    return await cmdScripts(chatId, userId, "", 0, env, null);
   }
-  if (text.indexOf("帮助") >= 0 && text.length < 10) {
-    return await cmdHelp(chatId, env);
+  if (text.indexOf("帮助") >= 0) {
+    return await cmdHelp(chatId, userId, env);
   }
-  
+  if (text.indexOf("用户管理") >= 0) {
+    if (!isAdmin(userId, env)) {
+      return await sendMsg(env, chatId, "⛔ 仅管理员可用");
+    }
+    return await cmdUsers(chatId, 0, env, null);
+  }
+
   if (text.startsWith("/")) {
-    const cmd = text.split(" ")[0].split("@")[0];
+    var cmd = text.split(" ")[0].split("@")[0];
+    console.log("Command:", cmd);
+
     switch (cmd) {
       case "/start":
-        return await cmdStart(chatId, env);
+        return await cmdStart(chatId, userId, env);
       case "/help":
-        return await cmdHelp(chatId, env);
+        return await cmdHelp(chatId, userId, env);
       case "/tasks":
-        return await cmdTasks(chatId, 0, env, null);
+        if (!await checkUserAccess(env, chatId, userId)) return;
+        return await cmdTasks(chatId, userId, 0, env, null);
       case "/envs":
-        return await cmdEnvs(chatId, 0, env, null);
+        if (!await checkUserAccess(env, chatId, userId)) return;
+        return await cmdEnvs(chatId, userId, 0, env, null);
       case "/subs":
-        return await cmdSubs(chatId, 0, env, null);
+        if (!await checkUserAccess(env, chatId, userId)) return;
+        return await cmdSubs(chatId, userId, 0, env, null);
       case "/deps":
-        return await cmdDeps(chatId, env, null);
+        if (!await checkUserAccess(env, chatId, userId)) return;
+        return await cmdDeps(chatId, userId, env, null);
       case "/scripts":
-        return await cmdScripts(chatId, "", 0, env, null);
+        if (!await checkUserAccess(env, chatId, userId)) return;
+        return await cmdScripts(chatId, userId, "", 0, env, null);
+      case "/users":
+        if (!isAdmin(userId, env)) {
+          return await sendMsg(env, chatId, "⛔ 仅管理员可用");
+        }
+        return await cmdUsers(chatId, 0, env, null);
+      case "/myconfig":
+        return await cmdMyConfig(chatId, userId, env);
       case "/cancel":
         userStates.delete(userId);
         return await sendMsg(env, chatId, "❌ 已取消");
-      case "/clearcache":
-        await clearCache(env, chatId, "");
-        return await sendMsg(env, chatId, "✅ 缓存已清除");
     }
   }
-  console.log("No handler matched for: " + text);
+
+  console.log("No handler matched");
 }
 
-async function cmdStart(chatId, env) {
-  const keyboard = {
+async function checkUserAccess(env, chatId, userId) {
+  if (isAdmin(userId, env)) return true;
+
+  var session = userSessions.get(String(userId));
+  if (session && session.expiry > Date.now()) {
+    return true;
+  }
+
+  if (!hasKV(env)) {
+    await sendMsg(env, chatId,
+      "⛔ 未授权\n\n您的 ID: <code>" + userId + "</code>\n\n当前仅管理员可使用此 Bot"
+    );
+    return false;
+  }
+
+  var config = await getUserConfig(env, userId);
+  if (!config) {
+    var kb = { inline_keyboard: [[
+      { text: "✅ 添加我的青龙面板", callback_data: "setup_start" },
+      { text: "❌ 取消", callback_data: "noop" }
+    ]] };
+    await sendMsg(env, chatId,
+      "👋 欢迎使用青龙面板 Bot\n\n" +
+      "您尚未配置青龙面板\n是否添加您自己的青龙面板？\n\n" +
+      "🔐 您的凭证将使用 AES-256 加密存储\n只有您设置的 PIN 才能解锁",
+      { reply_markup: kb }
+    );
+    return false;
+  }
+
+  userStates.set(userId, { action: "unlock_pin", chatId: chatId });
+  await sendMsg(env, chatId,
+    "🔐 请输入您的 6 位 PIN 码解锁\n\n/cancel 取消"
+  );
+  return false;
+}
+
+// ==================== 命令处理 ====================
+
+async function cmdStart(chatId, userId, env) {
+  var isAdminUser = isAdmin(userId, env);
+  var keyboard = {
     keyboard: [
       [{ text: "📋 任务管理" }, { text: "🔑 环境变量" }],
       [{ text: "📦 订阅管理" }, { text: "📚 依赖管理" }],
@@ -422,1067 +600,1419 @@ async function cmdStart(chatId, env) {
     resize_keyboard: true,
     persistent: true
   };
-  await sendMsg(
-    env,
-    chatId,
-    "🐉 青龙面板 Bot v3.4\n\n✨ 脚本查看优化版\n• Token 智能缓存\n• 数据自动缓存\n• 脚本内容查看 🆕\n• 并行请求加速\n\n请选择操作或使用命令\n\n💡 转发脚本文件即可自动添加",
-    { reply_markup: keyboard }
+  if (isAdminUser) {
+    keyboard.keyboard.push([{ text: "👥 用户管理" }]);
+  }
+
+  var text = "🐉 <b>青龙面板 Bot v5.3</b>\n\n";
+  if (isAdminUser) {
+    text += "👑 管理员模式\n";
+    text += "使用默认青龙配置\n\n";
+  } else if (hasKV(env)) {
+    text += "👤 多用户模式\n";
+    text += "请先配置您的青龙面板\n\n";
+  } else {
+    text += "⚠️ 仅管理员模式\n";
+    text += "KV 未绑定，不支持多用户\n\n";
+  }
+  text += "请选择操作或使用命令";
+
+  await sendMsg(env, chatId, text, { reply_markup: keyboard });
+}
+
+async function cmdHelp(chatId, userId, env) {
+  var isAdminUser = isAdmin(userId, env);
+  var text = "🐉 <b>青龙面板 Bot 帮助</b>\n\n";
+  text += "<b>📌 基本命令</b>\n";
+  text += "/start - 开始使用\n";
+  text += "/tasks - 📋 任务管理\n";
+  text += "/envs - 🔑 环境变量\n";
+  text += "/subs - 📦 订阅管理\n";
+  text += "/deps - 📚 依赖管理\n";
+  text += "/scripts - 📁 脚本管理\n";
+  text += "/myconfig - ⚙️ 我的配置\n";
+  text += "/help - ❓ 帮助信息\n\n";
+
+  if (isAdminUser) {
+    text += "<b>👑 管理员命令</b>\n";
+    text += "/users - 👥 用户管理\n\n";
+  }
+
+  text += "<b>📤 添加脚本方式</b>\n";
+  text += "1. 直接发送 .js/.py/.sh/.ts 文件\n";
+  text += "2. 发送 GitHub/Gitee 文件链接\n\n";
+
+  text += "<b>🔐 安全说明</b>\n";
+  text += "• 凭证使用 AES-256-GCM 加密\n";
+  text += "• PIN 不存储，无法被任何人查看\n";
+  text += "• 会话 30 分钟后自动锁定";
+
+  var kb = { inline_keyboard: [] };
+  kb.inline_keyboard.push([
+    { text: "📋 任务", callback_data: "cmd_tasks" },
+    { text: "🔑 环境变量", callback_data: "cmd_envs" },
+    { text: "📦 订阅", callback_data: "cmd_subs" }
+  ]);
+  kb.inline_keyboard.push([
+    { text: "📚 依赖", callback_data: "cmd_deps" },
+    { text: "📁 脚本", callback_data: "cmd_scripts" }
+  ]);
+  if (isAdminUser) {
+    kb.inline_keyboard.push([{ text: "👥 用户管理", callback_data: "cmd_users" }]);
+  }
+
+  await sendMsg(env, chatId, text, { reply_markup: kb });
+}
+
+async function cmdMyConfig(chatId, userId, env) {
+  if (isAdmin(userId, env)) {
+    var kb = { inline_keyboard: [[{ text: "🔄 测试连接", callback_data: "test_connection" }]] };
+    return await sendMsg(env, chatId,
+      "👑 <b>管理员配置</b>\n\n" +
+      "使用环境变量中的默认青龙配置\n\n" +
+      "地址: <code>" + (env.QL_BASE_URL || "未设置") + "</code>",
+      { reply_markup: kb }
+    );
+  }
+
+  if (!hasKV(env)) {
+    return await sendMsg(env, chatId, "⚠️ KV 未绑定，不支持用户配置");
+  }
+
+  var config = await getUserConfig(env, userId);
+  if (!config) {
+    var kb = { inline_keyboard: [[{ text: "✅ 添加配置", callback_data: "setup_start" }]] };
+    return await sendMsg(env, chatId, "您尚未配置青龙面板", { reply_markup: kb });
+  }
+
+  var sessionActive = userSessions.has(String(userId));
+  var kb = { inline_keyboard: [
+    [{ text: "🔄 测试连接", callback_data: "test_connection" }],
+    [{ text: "🗑️ 删除我的配置", callback_data: "delete_my_config" }]
+  ] };
+  await sendMsg(env, chatId,
+    "⚙️ <b>我的配置</b>\n\n" +
+    "状态: " + (sessionActive ? "🔓 已解锁" : "🔐 已锁定") + "\n" +
+    "添加时间: " + new Date(config.createdAt).toLocaleString("zh-CN"),
+    { reply_markup: kb }
   );
 }
 
-async function cmdHelp(chatId, env) {
-  const text = "🐉 青龙面板 Bot 帮助\n\n/tasks - 📋 任务管理\n/envs - 🔑 环境变量\n/subs - 📦 订阅管理\n/deps - 📚 依赖管理\n/scripts - 📁 脚本管理\n/clearcache - 🗑️ 清除缓存\n\n📤 添加脚本方式：\n1. 直接转发 .js/.py/.sh/.ts 文件\n2. 发送 GitHub/Gitee 文件链接\n3. 发送脚本直链（以 .js 等结尾）\n\n🆕 脚本管理新功能：\n• 点击脚本名称查看内容\n• 显示文件路径和大小\n\n💡 自动转换 GitHub blob 链接为 raw 链接\n⚡ 数据自动缓存，响应更快";
-  await sendMsg(env, chatId, text);
-}
+// ==================== 用户管理 ====================
 
-async function cmdTasks(chatId, page, env, msgId) {
-  const cacheKey = "tasks:list";
-  const result = await qlApiCached(env, chatId, cacheKey, CACHE_TTL.tasks, "GET", "/open/crons", null);
-  const crons = toArray(result);
-  if (crons.length === 0) {
-    const text2 = "📋 任务管理\n\n暂无任务";
-    const kb = { inline_keyboard: [[{ text: "➕ 新建任务", callback_data: "task_new" }]] };
-    if (msgId) {
-      return await editMsg(env, chatId, msgId, text2, { reply_markup: kb });
-    }
-    return await sendMsg(env, chatId, text2, { reply_markup: kb });
+async function cmdUsers(chatId, page, env, msgId) {
+  var users = await getAllUsers(env);
+
+  if (users.length === 0) {
+    var text = "👥 <b>用户管理</b>\n\n暂无用户";
+    var kb = { inline_keyboard: [[{ text: "🔄 刷新", callback_data: "users_refresh" }]] };
+    if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: kb });
+    return await sendMsg(env, chatId, text, { reply_markup: kb });
   }
-  const pageSize = 8;
-  const totalPages = Math.ceil(crons.length / pageSize);
-  const p = Math.min(Math.max(0, page), totalPages - 1);
-  const items = crons.slice(p * pageSize, (p + 1) * pageSize);
-  const running = crons.filter(function(c) { return c.isRunning; }).length;
-  const enabled = crons.filter(function(c) { return !c.isDisabled; }).length;
-  const keyboard = [];
-  for (let i = 0; i < items.length; i++) {
-    const c = items[i];
-    let icon = c.isDisabled ? "🔕" : c.isRunning ? "🏃" : "✅";
-    let name = (c.name || "未命名").slice(0, 22);
-    keyboard.push([{ text: icon + " " + name, callback_data: "cron_" + c.id }]);
+
+  var pageSize = 8;
+  var totalPages = Math.ceil(users.length / pageSize);
+  var p = Math.min(Math.max(0, page), totalPages - 1);
+  var items = users.slice(p * pageSize, (p + 1) * pageSize);
+
+  var keyboard = [];
+  for (var i = 0; i < items.length; i++) {
+    var u = items[i];
+    var icon = u.banned ? "🚫" : "👤";
+    keyboard.push([{ text: icon + " " + u.visitorId, callback_data: "user_" + u.visitorId }]);
   }
-  const nav = [];
-  if (p > 0) nav.push({ text: "⬅️", callback_data: "tasks_" + (p - 1) });
-  nav.push({ text: p + 1 + "/" + totalPages, callback_data: "noop" });
-  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "tasks_" + (p + 1) });
+
+  var nav = [];
+  if (p > 0) nav.push({ text: "⬅️", callback_data: "users_" + (p - 1) });
+  nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "users_" + (p + 1) });
   keyboard.push(nav);
-  keyboard.push([
-    { text: "🔄 刷新", callback_data: "tasks_refresh_" + p },
-    { text: "➕ 新建", callback_data: "task_new" }
-  ]);
-  const text = "📋 任务管理\n\n共 " + crons.length + " 个 | ✅" + enabled + " 🏃" + running + " 🔕" + (crons.length - enabled);
-  if (msgId) {
-    return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
-  }
-  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
-}
+  keyboard.push([{ text: "🔄 刷新", callback_data: "users_refresh" }]);
 
-async function showCron(chatId, msgId, cronId, env) {
-  const cacheKey = "tasks:detail:" + cronId;
-  const result = await qlApiCached(env, chatId, cacheKey, CACHE_TTL.tasks, "GET", "/open/crons/" + cronId, null);
-  if (result.code !== 200 || !result.data) {
-    return await editMsg(env, chatId, msgId, "❌ 任务不存在", {
-      reply_markup: { inline_keyboard: [[{ text: "⬅️ 返回", callback_data: "tasks_0" }]] }
-    });
-  }
-  const c = result.data;
-  const status = c.isDisabled ? "🔕 已禁用" : c.isRunning ? "🏃 运行中" : "✅ 已启用";
-  let text = "📋 " + (c.name || "未命名") + "\n\n";
-  text += "状态: " + status + "\n";
-  text += "定时: " + (c.schedule || "无") + "\n";
-  text += "命令: " + (c.command || "无") + "";
-  const kb = [];
-  if (c.isRunning) {
-    kb.push([{ text: "⏹️ 停止运行", callback_data: "cron_stop_" + cronId }]);
-  } else {
-    kb.push([{ text: "▶️ 运行任务", callback_data: "cron_run_" + cronId }]);
-  }
-  const row2 = [];
-  if (c.isDisabled) {
-    row2.push({ text: "✅ 启用", callback_data: "cron_en_" + cronId });
-  } else {
-    row2.push({ text: "🔕 禁用", callback_data: "cron_dis_" + cronId });
-  }
-  row2.push({ text: "✏️ 编辑定时", callback_data: "cron_edit_" + cronId });
-  kb.push(row2);
-  kb.push([
-    { text: "📄 查看日志", callback_data: "cron_log_" + cronId },
-    { text: "🗑️ 删除", callback_data: "cron_del_" + cronId }
-  ]);
-  kb.push([{ text: "⬅️ 返回列表", callback_data: "tasks_0" }]);
-  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
-}
-
-async function cmdEnvs(chatId, page, env, msgId) {
-  const cacheKey = "envs:list";
-  const result = await qlApiCached(env, chatId, cacheKey, CACHE_TTL.envs, "GET", "/open/envs", null);
-  const envs = toArray(result);
-  if (envs.length === 0) {
-    const text2 = "🔑 环境变量\n\n暂无变量";
-    const kb = { inline_keyboard: [[{ text: "➕ 添加变量", callback_data: "env_add" }]] };
-    if (msgId) return await editMsg(env, chatId, msgId, text2, { reply_markup: kb });
-    return await sendMsg(env, chatId, text2, { reply_markup: kb });
-  }
-  const pageSize = 8;
-  const totalPages = Math.ceil(envs.length / pageSize);
-  const p = Math.min(Math.max(0, page), totalPages - 1);
-  const items = envs.slice(p * pageSize, (p + 1) * pageSize);
-  const keyboard = [];
-  for (let i = 0; i < items.length; i++) {
-    const e = items[i];
-    const icon = e.status === 0 ? "✅" : "🔕";
-    const name = (e.name || "未命名").slice(0, 22);
-    keyboard.push([{ text: icon + " " + name, callback_data: "env_" + e.id }]);
-  }
-  const nav = [];
-  if (p > 0) nav.push({ text: "⬅️", callback_data: "envs_" + (p - 1) });
-  nav.push({ text: p + 1 + "/" + totalPages, callback_data: "noop" });
-  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "envs_" + (p + 1) });
-  keyboard.push(nav);
-  keyboard.push([
-    { text: "➕ 添加", callback_data: "env_add" },
-    { text: "🔄 刷新", callback_data: "envs_refresh_" + p }
-  ]);
-  const text = "🔑 环境变量\n\n共 " + envs.length + " 个";
+  var text = "👥 <b>用户管理</b>\n\n共 " + users.length + " 个用户";
   if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
   return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
 }
 
-async function showEnv(chatId, msgId, envId, env) {
-  const cacheKey = "envs:list";
-  const result = await qlApiCached(env, chatId, cacheKey, CACHE_TTL.envs, "GET", "/open/envs", null);
-  const envs = toArray(result);
-  const e = envs.find(function(x) { return String(x.id) === String(envId); });
-  if (!e) {
-    return await editMsg(env, chatId, msgId, "❌ 变量不存在", {
-      reply_markup: { inline_keyboard: [[{ text: "⬅️ 返回", callback_data: "envs_0" }]] }
+async function showUserDetail(chatId, msgId, targetUserId, env) {
+  var config = await getUserConfig(env, targetUserId);
+  if (!config) {
+    return await editMsg(env, chatId, msgId, "❌ 用户不存在", {
+      reply_markup: { inline_keyboard: [[{ text: "⬅️ 返回", callback_data: "users_0" }]] }
     });
   }
-  const status = e.status === 0 ? "✅ 已启用" : "🔕 已禁用";
-  let text = "🔑 " + e.name + "\n\n";
+
+  var status = config.banned ? "🚫 已拉黑" : "✅ 正常";
+  var text = "👤 <b>用户详情</b>\n\n";
+  text += "ID: <code>" + targetUserId + "</code>\n";
   text += "状态: " + status + "\n";
-  text += "值: " + (e.value || "") + "";
-  if (e.remarks) text += "\n备注: " + e.remarks;
-  const kb = [];
-  if (e.status === 0) {
-    kb.push([{ text: "🔕 禁用", callback_data: "env_dis_" + envId }]);
+  text += "添加时间: " + new Date(config.createdAt).toLocaleString("zh-CN");
+
+  var kb = [];
+  if (config.banned) {
+    kb.push([{ text: "✅ 解除拉黑", callback_data: "user_unban_" + targetUserId }]);
   } else {
-    kb.push([{ text: "✅ 启用", callback_data: "env_en_" + envId }]);
+    kb.push([{ text: "🚫 拉黑用户", callback_data: "user_ban_" + targetUserId }]);
   }
-  kb.push([
-    { text: "✏️ 编辑", callback_data: "env_edit_" + envId },
-    { text: "🗑️ 删除", callback_data: "env_del_" + envId }
-  ]);
-  kb.push([{ text: "⬅️ 返回列表", callback_data: "envs_0" }]);
+  kb.push([{ text: "🗑️ 删除用户", callback_data: "user_del_" + targetUserId }]);
+  kb.push([{ text: "⬅️ 返回列表", callback_data: "users_0" }]);
+
   await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
 }
 
-async function cmdSubs(chatId, page, env, msgId) {
-  const cacheKey = "subs:list";
-  const result = await qlApiCached(env, chatId, cacheKey, CACHE_TTL.subs, "GET", "/open/subscriptions", null);
-  const subs = toArray(result);
-  if (subs.length === 0) {
-    const text2 = "📦 订阅管理\n\n暂无订阅";
-    const kb = { inline_keyboard: [[{ text: "➕ 添加订阅", callback_data: "sub_add" }]] };
-    if (msgId) return await editMsg(env, chatId, msgId, text2, { reply_markup: kb });
-    return await sendMsg(env, chatId, text2, { reply_markup: kb });
-  }
-  const pageSize = 8;
-  const totalPages = Math.ceil(subs.length / pageSize);
-  const p = Math.min(Math.max(0, page), totalPages - 1);
-  const items = subs.slice(p * pageSize, (p + 1) * pageSize);
-  const keyboard = [];
-  for (let i = 0; i < items.length; i++) {
-    const s = items[i];
-    const icon = s.is_disabled ? "🔕" : "✅";
-    const name = (s.name || "未命名").slice(0, 22);
-    keyboard.push([{ text: icon + " " + name, callback_data: "sub_" + s.id }]);
-  }
-  const nav = [];
-  if (p > 0) nav.push({ text: "⬅️", callback_data: "subs_" + (p - 1) });
-  nav.push({ text: p + 1 + "/" + totalPages, callback_data: "noop" });
-  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "subs_" + (p + 1) });
-  keyboard.push(nav);
-  keyboard.push([
-    { text: "➕ 添加", callback_data: "sub_add" },
-    { text: "🔄 刷新", callback_data: "subs_refresh_" + p }
-  ]);
-  const text = "📦 订阅管理\n\n共 " + subs.length + " 个";
-  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
-  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
-}
+// ==================== 工具函数 ====================
 
-async function showSub(chatId, msgId, subId, env) {
-  const cacheKey = "subs:list";
-  const result = await qlApiCached(env, chatId, cacheKey, CACHE_TTL.subs, "GET", "/open/subscriptions", null);
-  const subs = toArray(result);
-  const s = subs.find(function(x) { return String(x.id) === String(subId); });
-  if (!s) {
-    return await editMsg(env, chatId, msgId, "❌ 订阅不存在", {
-      reply_markup: { inline_keyboard: [[{ text: "⬅️ 返回", callback_data: "subs_0" }]] }
-    });
-  }
-  const status = s.is_disabled ? "🔕 已禁用" : "✅ 已启用";
-  let text = "📦 " + s.name + "\n\n";
-  text += "状态: " + status + "\n";
-  text += "定时: " + (s.schedule || "无") + "\n";
-  text += "URL: " + (s.url || "") + "";
-  if (s.branch) text += "\n分支: " + s.branch;
-  const kb = [];
-  kb.push([{ text: "▶️ 立即运行", callback_data: "sub_run_" + subId }]);
-  if (s.is_disabled) {
-    kb.push([{ text: "✅ 启用", callback_data: "sub_en_" + subId }]);
-  } else {
-    kb.push([{ text: "🔕 禁用", callback_data: "sub_dis_" + subId }]);
-  }
-  kb.push([
-    { text: "✏️ 编辑", callback_data: "sub_edit_" + subId },
-    { text: "🗑️ 删除", callback_data: "sub_del_" + subId }
-  ]);
-  kb.push([{ text: "⬅️ 返回列表", callback_data: "subs_0" }]);
-  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
-}
-
-async function cmdDeps(chatId, env, msgId) {
-  const cacheKeys = ["deps:python3", "deps:nodejs", "deps:linux"];
-  const results = await Promise.allSettled([
-    qlApiCached(env, chatId, cacheKeys[0], CACHE_TTL.deps, "GET", "/open/dependencies?type=python3", null),
-    qlApiCached(env, chatId, cacheKeys[1], CACHE_TTL.deps, "GET", "/open/dependencies?type=nodejs", null),
-    qlApiCached(env, chatId, cacheKeys[2], CACHE_TTL.deps, "GET", "/open/dependencies?type=linux", null)
-  ]);
-  const pythonDeps = results[0].status === "fulfilled" ? toArray(results[0].value) : [];
-  const nodeDeps = results[1].status === "fulfilled" ? toArray(results[1].value) : [];
-  const linuxDeps = results[2].status === "fulfilled" ? toArray(results[2].value) : [];
-  const total = pythonDeps.length + nodeDeps.length + linuxDeps.length;
-  const kb = [
-    [{ text: "🐍 Python (" + pythonDeps.length + ")", callback_data: "dep_list_python3" }],
-    [{ text: "📦 Node.js (" + nodeDeps.length + ")", callback_data: "dep_list_nodejs" }],
-    [{ text: "🐧 Linux (" + linuxDeps.length + ")", callback_data: "dep_list_linux" }],
-    [{ text: "🔄 刷新", callback_data: "deps_refresh" }]
-  ];
-  const text = "📚 依赖管理\n\n共 " + total + " 个依赖\n\n点击分类查看详情";
-  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
-  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: kb } });
-}
-
-async function showDepList(chatId, msgId, type, page, env) {
-  const cacheKey = "deps:" + type;
-  const result = await qlApiCached(env, chatId, cacheKey, CACHE_TTL.deps, "GET", "/open/dependencies?type=" + type, null);
-  const deps = toArray(result);
-  const typeNames = {
-    "python3": "🐍 Python",
-    "nodejs": "📦 Node.js",
-    "linux": "🐧 Linux"
-  };
-  const typeName = typeNames[type] || type;
-  if (deps.length === 0) {
-    const kb = [
-      [{ text: "➕ 添加依赖", callback_data: "dep_add_" + type }],
-      [{ text: "⬅️ 返回", callback_data: "deps_main" }]
-    ];
-    return await editMsg(env, chatId, msgId, typeName + " 依赖\n\n暂无依赖", { reply_markup: { inline_keyboard: kb } });
-  }
-  const pageSize = 6;
-  const totalPages = Math.ceil(deps.length / pageSize);
-  const p = Math.min(Math.max(0, page), totalPages - 1);
-  const items = deps.slice(p * pageSize, (p + 1) * pageSize);
-  const keyboard = [];
-  for (let i = 0; i < items.length; i++) {
-    const d = items[i];
-    let icon = d.status === 0 ? "✅" : d.status === 1 ? "⏳" : "❌";
-    let name = (d.name || "未知").slice(0, 14);
-    keyboard.push([
-      { text: icon + " " + name, callback_data: "noop" },
-      { text: "🔄", callback_data: "dep_reinstall_" + d.id + "_" + type },
-      { text: "🗑️", callback_data: "dep_del_" + d.id + "_" + type }
-    ]);
-  }
-  const nav = [];
-  if (p > 0) nav.push({ text: "⬅️", callback_data: "dep_page_" + type + "_" + (p - 1) });
-  nav.push({ text: p + 1 + "/" + totalPages, callback_data: "noop" });
-  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "dep_page_" + type + "_" + (p + 1) });
-  keyboard.push(nav);
-  keyboard.push([
-    { text: "➕ 添加", callback_data: "dep_add_" + type },
-    { text: "🔄 刷新", callback_data: "dep_refresh_" + type }
-  ]);
-  keyboard.push([{ text: "⬅️ 返回分类", callback_data: "deps_main" }]);
-  const text = typeName + " 依赖\n\n共 " + deps.length + " 个\n\n✅已安装 ⏳安装中 ❌失败";
-  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
-}
-
-async function cmdScripts(chatId, folder, page, env, msgId) {
-  console.log('cmdScripts called with folder: "' + folder + '", page: ' + page);
-  try {
-    const cacheKey = "scripts:tree";
-    const result = await qlApiCached(env, chatId, cacheKey, CACHE_TTL.scripts, "GET", "/open/scripts", null);
-    console.log("Scripts API result code: " + result.code);
-    if (result.code !== 200) {
-      const text = "❌ 获取失败: " + (result.message || "未知错误");
-      if (msgId) return await editMsg(env, chatId, msgId, text);
-      return await sendMsg(env, chatId, text);
-    }
-    const data = result.data || [];
-    console.log("Scripts data length: " + data.length);
-    let folders = [];
-    let files = [];
-    if (!folder || folder === "") {
-      for (let i = 0; i < data.length; i++) {
-        const item = data[i];
-        if (item.children && item.children.length > 0) {
-          folders.push(item.title);
-        } else if (item.title) {
-          files.push(item.title);
-        }
-      }
-    } else {
-      const findNode = function(items, target) {
-        for (let i = 0; i < items.length; i++) {
-          const item = items[i];
-          if (item.title === target) return item;
-          if (item.children) {
-            const found = findNode(item.children, target);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-      const node = findNode(data, folder);
-      if (node && node.children) {
-        for (let i = 0; i < node.children.length; i++) {
-          const child = node.children[i];
-          if (child.children && child.children.length > 0) {
-            folders.push(child.title);
-          } else if (child.title) {
-            files.push(child.title);
-          }
-        }
-      }
-    }
-    console.log("Folders: " + folders.length + ", Files: " + files.length);
-    const keyboard = [];
-    if (folder && folder !== "") {
-      keyboard.push([{ text: "⬅️ 返回根目录", callback_data: "scripts_root_0" }]);
-    }
-    for (let i = 0; i < folders.length; i++) {
-      const fname = folders[i];
-      const cbData = "sdir_" + encodeURIComponent(fname).slice(0, 50);
-      keyboard.push([{ text: "📂 " + fname.slice(0, 28), callback_data: cbData }]);
-    }
-    const pageSize = 5;
-    const totalPages = Math.max(1, Math.ceil(files.length / pageSize));
-    const p = Math.min(Math.max(0, page || 0), totalPages - 1);
-    const startIdx = p * pageSize;
-    const pageFiles = files.slice(startIdx, startIdx + pageSize);
-    for (let i = 0; i < pageFiles.length; i++) {
-      const f = pageFiles[i];
-      const displayName = f.length > 18 ? f.slice(0, 18) + ".." : f;
-      const path = folder ? folder + "/" + f : f;
-      const encodedPath = encodeURIComponent(path).slice(0, 40);
-      // 🆕 修改：点击脚本名称可以查看内容
-      keyboard.push([
-        { text: "📄 " + displayName, callback_data: "scrview_" + encodedPath },
-        { text: "▶️", callback_data: "scrrun_" + encodedPath },
-        { text: "🗑️", callback_data: "scrdel_" + encodedPath }
-      ]);
-    }
-    if (files.length > pageSize) {
-      const nav = [];
-      const folderParam = folder ? encodeURIComponent(folder).slice(0, 30) : "";
-      if (p > 0) nav.push({ text: "⬅️ 上一页", callback_data: "scrp_" + folderParam + "_" + (p - 1) });
-      nav.push({ text: p + 1 + "/" + totalPages, callback_data: "noop" });
-      if (p < totalPages - 1) nav.push({ text: "下一页 ➡️", callback_data: "scrp_" + folderParam + "_" + (p + 1) });
-      keyboard.push(nav);
-    }
-    const refreshCb = folder ? "scr_refresh_" + encodeURIComponent(folder).slice(0, 40) : "scr_refresh_root";
-    keyboard.push([{ text: "🔄 刷新", callback_data: refreshCb }]);
-    const title = folder || "根目录";
-    const NL = String.fromCharCode(10);
-    const msgText = "📁 脚本管理 - " + title + "" + NL + NL + 
-      "📂 " + folders.length + " 文件夹 | 📄 " + files.length + " 文件" + NL + 
-      (files.length > pageSize ? "(第 " + (p + 1) + "/" + totalPages + " 页)" : "") + NL + NL + 
-      "📄 发送文件 | ▶️ 添加任务 | 🗑️ 删除";
-    console.log("Sending scripts message, keyboard buttons: " + keyboard.length);
-    let sendResult;
-    if (msgId) {
-      sendResult = await editMsg(env, chatId, msgId, msgText, { reply_markup: { inline_keyboard: keyboard } });
-    } else {
-      sendResult = await sendMsg(env, chatId, msgText, { reply_markup: { inline_keyboard: keyboard } });
-    }
-    console.log("Send result ok: " + sendResult.ok);
-    if (!sendResult.ok) {
-      console.log("Send error: " + JSON.stringify(sendResult));
-    }
-    return sendResult;
-  } catch (error) {
-    console.log("cmdScripts error: " + error.message);
-    return await sendMsg(env, chatId, "❌ 脚本管理错误: " + error.message);
-  }
-}
-
-// 🆕 新增函数：发送脚本文件给用户
-async function sendScriptFile(chatId, msgId, path, env) {
-  const lastSlash = path.lastIndexOf("/");
-  const filename = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
-  const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
-  
-  try {
-    // 先更新消息提示正在获取
-    await editMsg(env, chatId, msgId, "⏳ 正在获取脚本文件: " + escapeHtml(filename) + "...");
-    
-    // 获取脚本内容
-    const endpoint = "/open/scripts/" + encodeURIComponent(filename) + "?path=" + encodeURIComponent(dir);
-    const result = await qlApi(env, "GET", endpoint, null);
-    
-    if (result.code !== 200 || !result.data) {
-      throw new Error(result.message || "获取脚本内容失败");
-    }
-    
-    const content = result.data;
-    
-    // 使用 Telegram sendDocument API 发送文件
-    const formData = new FormData();
-    formData.append("chat_id", String(chatId));
-    
-    // 创建文件 Blob
-    const blob = new Blob([content], { type: "text/plain" });
-    formData.append("document", blob, filename);
-    
-    // 构建 caption（文件说明）
-    const sizeKB = (content.length / 1024).toFixed(2);
-    let caption = "📄 " + escapeHtml(filename) + "\n\n";
-    caption += "📁 路径: " + escapeHtml(path) + "\n";
-    caption += "📏 大小: " + content.length + " 字节 (" + sizeKB + " KB)";
-    
-    formData.append("caption", caption);
-    formData.append("parse_mode", "HTML");
-    
-    // 发送文件
-    const resp = await fetch("https://api.telegram.org/bot" + env.TG_BOT_TOKEN + "/sendDocument", {
-      method: "POST",
-      body: formData
-    });
-    
-    const sendResult = await resp.json();
-    
-    if (!sendResult.ok) {
-      throw new Error(sendResult.description || "发送文件失败");
-    }
-    
-    // 更新原消息为操作按钮
-    const encodedPath = encodeURIComponent(path).slice(0, 40);
-    const kb = [
-      [
-        { text: "▶️ 添加到任务", callback_data: "scrrun_" + encodedPath },
-        { text: "🗑️ 删除脚本", callback_data: "scrdel_" + encodedPath }
-      ],
-      [
-        { text: "📤 重新发送", callback_data: "scrview_" + encodedPath },
-        { text: "⬅️ 返回列表", callback_data: dir ? "sdir_" + encodeURIComponent(dir).slice(0, 50) : "scripts_root_0" }
-      ]
-    ];
-    
-    return await editMsg(env, chatId, msgId, "✅ 文件已发送: " + escapeHtml(filename) + "", { reply_markup: { inline_keyboard: kb } });
-    
-  } catch (error) {
-    const kb = [[{ text: "⬅️ 返回", callback_data: "scripts_root_0" }]];
-    return await editMsg(env, chatId, msgId, "❌ 发送脚本失败: " + error.message, { reply_markup: { inline_keyboard: kb } });
-  }
-}
-
-async function handleFileUrl(msg, env) {
-  const chatId = msg.chat.id;
-  let url = (msg.text || "").trim();
-  const urlMatch = url.match(/https?:\/\/[^\s]+/i);
-  if (!urlMatch) {
-    return await sendMsg(env, chatId, "❌ 无法识别链接");
-  }
-  url = urlMatch[0];
-  if (url.includes("github.com") && url.includes("/blob/")) {
-    url = url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
-  }
-  if (url.includes("gitee.com") && url.includes("/blob/")) {
-    url = url.replace("/blob/", "/raw/");
-  }
-  const urlParts = url.split("/");
-  let fileName = urlParts[urlParts.length - 1];
-  if (fileName.includes("?")) {
-    fileName = fileName.split("?")[0];
-  }
-  const validExts = [".js", ".py", ".sh", ".ts"];
-  const lastDot = fileName.lastIndexOf(".");
-  const ext = lastDot >= 0 ? fileName.slice(lastDot).toLowerCase() : "";
-  if (validExts.indexOf(ext) < 0) {
-    return await sendMsg(env, chatId, "❌ 不支持的文件类型: " + (ext || "无扩展名") + "\n\n支持: " + validExts.join(", ") + "\n\n💡 请确保链接指向脚本文件");
-  }
-  await sendMsg(env, chatId, "⏳ 正在下载: " + fileName + "\n\n" + url.slice(0, 60) + (url.length > 60 ? "..." : "") + "");
-  try {
-    const fileResp = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-      }
-    });
-    if (!fileResp.ok) {
-      throw new Error("下载失败: HTTP " + fileResp.status);
-    }
-    const content = await fileResp.text();
-    if (content.length > 1024 * 1024) {
-      throw new Error("文件过大 (最大 1MB)");
-    }
-    if (content.length < 10) {
-      throw new Error("文件内容为空或太小");
-    }
-    const uploadResult = await qlApiCached(env, chatId, "no-cache", 0, "POST", "/open/scripts", {
-      filename: fileName,
-      content,
-      path: ""
-    });
-    if (uploadResult.code !== 200) {
-      throw new Error(uploadResult.message || "上传失败");
-    }
-    const kb = { inline_keyboard: [[
-      { text: "✅ 创建定时任务", callback_data: "newcron_" + encodeURIComponent(fileName) },
-      { text: "❌ 仅保存", callback_data: "noop" }
-    ]] };
-    await sendMsg(env, chatId, "✅ " + fileName + " 上传成功！\n\n📁 大小: " + (content.length / 1024).toFixed(1) + " KB\n🔗 来源: " + (url.includes("github") ? "GitHub" : url.includes("gitee") ? "Gitee" : "直链") + "\n\n是否创建定时任务？", { reply_markup: kb });
-  } catch (error) {
-    await sendMsg(env, chatId, "❌ 处理失败: " + error.message);
-  }
-}
-
-async function handleDocument(msg, env) {
-  const chatId = msg.chat.id;
-  const doc = msg.document;
-  const fileName = doc.file_name;
-  const validExts = [".js", ".py", ".sh", ".ts"];
-  const lastDot = fileName.lastIndexOf(".");
-  const ext = lastDot >= 0 ? fileName.slice(lastDot).toLowerCase() : "";
-  if (validExts.indexOf(ext) < 0) {
-    return await sendMsg(env, chatId, "❌ 不支持的文件类型 " + ext + "\n\n支持: " + validExts.join(", "));
-  }
-  if (doc.file_size > 1024 * 1024) {
-    return await sendMsg(env, chatId, "❌ 文件过大 (最大 1MB)");
-  }
-  await sendMsg(env, chatId, "⏳ 正在上传: " + fileName);
-  try {
-    const fileInfo = await tgApi(env.TG_BOT_TOKEN, "getFile", { file_id: doc.file_id });
-    if (!fileInfo.ok) throw new Error("获取文件信息失败");
-    const fileUrl = "https://api.telegram.org/file/bot" + env.TG_BOT_TOKEN + "/" + fileInfo.result.file_path;
-    const fileResp = await fetch(fileUrl);
-    const content = await fileResp.text();
-    const uploadResult = await qlApiCached(env, chatId, "no-cache", 0, "POST", "/open/scripts", {
-      filename: fileName,
-      content,
-      path: ""
-    });
-    if (uploadResult.code !== 200) {
-      throw new Error(uploadResult.message || "上传失败");
-    }
-    const kb = { inline_keyboard: [[
-      { text: "✅ 创建定时任务", callback_data: "newcron_" + encodeURIComponent(fileName) },
-      { text: "❌ 仅保存", callback_data: "noop" }
-    ]] };
-    await sendMsg(env, chatId, "✅ " + fileName + " 上传成功！\n\n是否创建定时任务？", { reply_markup: kb });
-  } catch (error) {
-    await sendMsg(env, chatId, "❌ 上传失败: " + error.message);
-  }
-}
-
-async function handleCallback(cb, env) {
-  const chatId = cb.message.chat.id;
-  const msgId = cb.message.message_id;
-  const userId = cb.from.id;
-  const data = cb.data;
-  console.log("Callback data: " + data);
-  await answerCb(env, cb.id, "⏳ 处理中...");
-  if (data === "noop") return;
-  
-  if (data.startsWith("tasks_refresh_")) {
-    await clearCache(env, chatId, "tasks");
-    const page = parseInt(data.slice(14)) || 0;
-    return await cmdTasks(chatId, page, env, msgId);
-  }
-  if (data.startsWith("envs_refresh_")) {
-    await clearCache(env, chatId, "envs");
-    const page = parseInt(data.slice(13)) || 0;
-    return await cmdEnvs(chatId, page, env, msgId);
-  }
-  if (data.startsWith("subs_refresh_")) {
-    await clearCache(env, chatId, "subs");
-    const page = parseInt(data.slice(13)) || 0;
-    return await cmdSubs(chatId, page, env, msgId);
-  }
-  if (data === "deps_refresh") {
-    await clearCache(env, chatId, "deps");
-    return await cmdDeps(chatId, env, msgId);
-  }
-  if (data.startsWith("dep_refresh_")) {
-    const type = data.slice(12);
-    await clearCache(env, chatId, "deps:" + type);
-    return await showDepList(chatId, msgId, type, 0, env);
-  }
-  if (data.startsWith("scr_refresh_")) {
-    await clearCache(env, chatId, "scripts");
-    const folderPart = data.slice(12);
-    const folder = folderPart === "root" ? "" : decodeURIComponent(folderPart);
-    return await cmdScripts(chatId, folder, 0, env, msgId);
-  }
-  if (data.startsWith("tasks_")) {
-    const page = parseInt(data.slice(6)) || 0;
-    return await cmdTasks(chatId, page, env, msgId);
-  }
-  if (data.startsWith("cron_run_")) {
-    const id = data.slice(9);
-    await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/crons/run", [parseInt(id)]);
-    await clearCache(env, chatId, "tasks");
-    return await showCron(chatId, msgId, id, env);
-  }
-  if (data.startsWith("cron_stop_")) {
-    const id = data.slice(10);
-    await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/crons/stop", [parseInt(id)]);
-    await clearCache(env, chatId, "tasks");
-    return await showCron(chatId, msgId, id, env);
-  }
-  if (data.startsWith("cron_en_")) {
-    const id = data.slice(8);
-    await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/crons/enable", [parseInt(id)]);
-    await clearCache(env, chatId, "tasks");
-    return await showCron(chatId, msgId, id, env);
-  }
-  if (data.startsWith("cron_dis_")) {
-    const id = data.slice(9);
-    await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/crons/disable", [parseInt(id)]);
-    await clearCache(env, chatId, "tasks");
-    return await showCron(chatId, msgId, id, env);
-  }
-  if (data.startsWith("cron_del_")) {
-    const id = data.slice(9);
-    await qlApiCached(env, chatId, "no-cache", 0, "DELETE", "/open/crons", [parseInt(id)]);
-    await clearCache(env, chatId, "tasks");
-    return await cmdTasks(chatId, 0, env, msgId);
-  }
-  if (data.startsWith("cron_edit_")) {
-    const id = data.slice(10);
-    userStates.set(userId, { action: "edit_cron", cronId: id, chatId, msgId });
-    return await editMsg(
-      env, chatId, msgId,
-      "✏️ 编辑定时\n\n请输入新的 cron 表达式\n例: 0 8 * * *\n\n/cancel 取消",
-      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "tasks_0" }]] } }
-    );
-  }
-  if (data.startsWith("cron_log_")) {
-    const id = data.slice(9);
-    const cronRes = await qlApiCached(env, chatId, "tasks:detail:" + id, CACHE_TTL.tasks, "GET", "/open/crons/" + id, null);
-    const logRes = await qlApi(env, "GET", "/open/crons/" + id + "/log", null);
-    let logContent = logRes.code === 200 ? logRes.data || "暂无日志" : "获取日志失败";
-    if (logContent.length > 3e3) {
-      logContent = "...(已截取)\n" + logContent.slice(-3e3);
-    }
-    const name = cronRes.data?.name || "任务";
-    const text = "📄 " + name + " 日志\n\n" + escapeHtml(logContent) + "";
-    const kb = [[
-      { text: "🔄 刷新", callback_data: "cron_log_" + id },
-      { text: "⬅️ 返回", callback_data: "cron_" + id }
-    ]];
-    return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
-  }
-  if (data === "task_new") {
-    userStates.set(userId, { action: "new_cron", chatId, msgId });
-    return await editMsg(
-      env, chatId, msgId,
-      "➕ 新建任务\n\n格式: 名称|命令|定时\n例: 测试|task test.js|0 8 * * *\n\n/cancel 取消",
-      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "tasks_0" }]] } }
-    );
-  }
-  if (data.startsWith("cron_")) {
-    const id = data.slice(5);
-    return await showCron(chatId, msgId, id, env);
-  }
-  if (data.startsWith("newcron_")) {
-    const fileName = decodeURIComponent(data.slice(8));
-    userStates.set(userId, { action: "create_cron", fileName, chatId, msgId });
-    return await sendMsg(
-      env, chatId,
-      "⏰ 为 " + fileName + " 设置定时\n\n输入 cron 表达式\n或输入 default 使用默认(每天0点)\n\n/cancel 取消"
-    );
-  }
-  if (data.startsWith("envs_")) {
-    const page = parseInt(data.slice(5)) || 0;
-    return await cmdEnvs(chatId, page, env, msgId);
-  }
-  if (data.startsWith("env_en_")) {
-    const id = data.slice(7);
-    await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/envs/enable", [parseInt(id)]);
-    await clearCache(env, chatId, "envs");
-    return await showEnv(chatId, msgId, id, env);
-  }
-  if (data.startsWith("env_dis_")) {
-    const id = data.slice(8);
-    await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/envs/disable", [parseInt(id)]);
-    await clearCache(env, chatId, "envs");
-    return await showEnv(chatId, msgId, id, env);
-  }
-  if (data.startsWith("env_del_")) {
-    const id = data.slice(8);
-    await qlApiCached(env, chatId, "no-cache", 0, "DELETE", "/open/envs", [parseInt(id)]);
-    await clearCache(env, chatId, "envs");
-    return await cmdEnvs(chatId, 0, env, msgId);
-  }
-  if (data === "env_add") {
-    userStates.set(userId, { action: "add_env", chatId, msgId });
-    return await editMsg(
-      env, chatId, msgId,
-      "➕ 添加变量\n\n格式: 名称=值\n\n/cancel 取消",
-      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "envs_0" }]] } }
-    );
-  }
-  if (data.startsWith("env_edit_")) {
-    const id = data.slice(9);
-    userStates.set(userId, { action: "edit_env", envId: id, chatId, msgId });
-    return await editMsg(
-      env, chatId, msgId,
-      "✏️ 编辑变量\n\n格式: 名称=值\n\n/cancel 取消",
-      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "env_" + id }]] } }
-    );
-  }
-  if (data.startsWith("env_")) {
-    const id = data.slice(4);
-    return await showEnv(chatId, msgId, id, env);
-  }
-  if (data.startsWith("subs_")) {
-    const page = parseInt(data.slice(5)) || 0;
-    return await cmdSubs(chatId, page, env, msgId);
-  }
-  if (data.startsWith("sub_run_")) {
-    const id = data.slice(8);
-    await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/subscriptions/run", [parseInt(id)]);
-    await clearCache(env, chatId, "subs");
-    return await showSub(chatId, msgId, id, env);
-  }
-  if (data.startsWith("sub_en_")) {
-    const id = data.slice(7);
-    await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/subscriptions/enable", [parseInt(id)]);
-    await clearCache(env, chatId, "subs");
-    return await showSub(chatId, msgId, id, env);
-  }
-  if (data.startsWith("sub_dis_")) {
-    const id = data.slice(8);
-    await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/subscriptions/disable", [parseInt(id)]);
-    await clearCache(env, chatId, "subs");
-    return await showSub(chatId, msgId, id, env);
-  }
-  if (data.startsWith("sub_del_")) {
-    const id = data.slice(8);
-    await qlApiCached(env, chatId, "no-cache", 0, "DELETE", "/open/subscriptions", [parseInt(id)]);
-    await clearCache(env, chatId, "subs");
-    return await cmdSubs(chatId, 0, env, msgId);
-  }
-  if (data === "sub_add") {
-    userStates.set(userId, { action: "add_sub", chatId, msgId });
-    return await editMsg(
-      env, chatId, msgId,
-      "➕ 添加订阅\n\n格式: 名称|URL|定时|分支\n例: Repo|https://github.com/x/y|0 0 * * *|main\n\n/cancel 取消",
-      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "subs_0" }]] } }
-    );
-  }
-  if (data.startsWith("sub_edit_")) {
-    const id = data.slice(9);
-    userStates.set(userId, { action: "edit_sub", subId: id, chatId, msgId });
-    return await editMsg(
-      env, chatId, msgId,
-      "✏️ 编辑订阅\n\n格式: 名称|URL|定时|分支\n留空保持不变: ||0 8 * * *|\n\n/cancel 取消",
-      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "sub_" + id }]] } }
-    );
-  }
-  if (data.startsWith("sub_")) {
-    const id = data.slice(4);
-    return await showSub(chatId, msgId, id, env);
-  }
-  if (data === "deps_main") {
-    return await cmdDeps(chatId, env, msgId);
-  }
-  if (data.startsWith("dep_list_")) {
-    const type = data.slice(9);
-    return await showDepList(chatId, msgId, type, 0, env);
-  }
-  if (data.startsWith("dep_page_")) {
-    const rest = data.slice(9);
-    const parts = rest.split("_");
-    const type = parts[0];
-    const page = parseInt(parts[1]) || 0;
-    return await showDepList(chatId, msgId, type, page, env);
-  }
-  if (data.startsWith("dep_reinstall_")) {
-    const rest = data.slice(14);
-    const parts = rest.split("_");
-    const id = parts[0];
-    const type = parts[1];
-    await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/dependencies/reinstall", [parseInt(id)]);
-    await clearCache(env, chatId, "deps:" + type);
-    return await showDepList(chatId, msgId, type, 0, env);
-  }
-  if (data.startsWith("dep_del_")) {
-    const rest = data.slice(8);
-    const parts = rest.split("_");
-    const id = parts[0];
-    const type = parts[1];
-    await qlApiCached(env, chatId, "no-cache", 0, "DELETE", "/open/dependencies", [parseInt(id)]);
-    await clearCache(env, chatId, "deps:" + type);
-    return await showDepList(chatId, msgId, type, 0, env);
-  }
-  if (data.startsWith("dep_add_")) {
-    const type = data.slice(8);
-    userStates.set(userId, { action: "add_dep", type, chatId, msgId });
-    const typeNames = { "python3": "Python", "nodejs": "Node.js", "linux": "Linux" };
-    return await editMsg(
-      env, chatId, msgId,
-      "➕ 添加 " + (typeNames[type] || type) + " 依赖\n\n输入依赖名（多个用空格分隔）\n\n/cancel 取消",
-      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "dep_list_" + type }]] } }
-    );
-  }
-  if (data.startsWith("scripts_root_")) {
-    const page = parseInt(data.slice(13)) || 0;
-    return await cmdScripts(chatId, "", page, env, msgId);
-  }
-  if (data.startsWith("sdir_")) {
-    const folder = decodeURIComponent(data.slice(5));
-    return await cmdScripts(chatId, folder, 0, env, msgId);
-  }
-  if (data.startsWith("scrp_")) {
-    const rest = data.slice(5);
-    const lastUnderscore = rest.lastIndexOf("_");
-    const folderEncoded = rest.slice(0, lastUnderscore);
-    const page = parseInt(rest.slice(lastUnderscore + 1)) || 0;
-    const folder = folderEncoded ? decodeURIComponent(folderEncoded) : "";
-    return await cmdScripts(chatId, folder, page, env, msgId);
-  }
-  // 🆕 新增：发送脚本文件
-  if (data.startsWith("scrview_")) {
-    const path = decodeURIComponent(data.slice(8));
-    return await sendScriptFile(chatId, msgId, path, env);
-  }
-  if (data.startsWith("scrrun_")) {
-    const path = decodeURIComponent(data.slice(7));
-    const lastSlash = path.lastIndexOf("/");
-    const filename = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
-    userStates.set(userId, { action: "add_script_cron", filename, path, chatId, msgId });
-    return await editMsg(
-      env, chatId, msgId,
-      "⏰ 添加到运行列表\n\n脚本: " + filename + "\n\n请输入 cron 表达式\n例: 0 8 * * * (每天8点)\n或输入 d 使用默认(每天0点)\n\n/cancel 取消",
-      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "scripts_root_0" }]] } }
-    );
-  }
-  if (data.startsWith("scrdel_")) {
-    const path = decodeURIComponent(data.slice(7));
-    const lastSlash = path.lastIndexOf("/");
-    const filename = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
-    const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
-    await qlApiCached(env, chatId, "no-cache", 0, "DELETE", "/open/scripts", { filename, path: dir });
-    await clearCache(env, chatId, "scripts");
-    return await cmdScripts(chatId, dir, 0, env, msgId);
-  }
-  console.log("Unhandled callback: " + data);
+function toArray(result) {
+  if (!result || result.code !== 200) return [];
+  var d = result.data;
+  if (Array.isArray(d)) return d;
+  if (d && Array.isArray(d.data)) return d.data;
+  return [];
 }
 
 function escapeHtml(text) {
   return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// ==================== 任务管理 ====================
+
+async function cmdTasks(chatId, userId, page, env, msgId) {
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var result = await qlApi(env, qlConfig, userId, "GET", "/open/crons", null);
+  var crons = toArray(result);
+
+  if (crons.length === 0) {
+    var text = "📋 <b>任务管理</b>\n\n暂无任务";
+    var kb = { inline_keyboard: [[{ text: "➕ 新建任务", callback_data: "task_new" }]] };
+    if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: kb });
+    return await sendMsg(env, chatId, text, { reply_markup: kb });
+  }
+
+  var pageSize = 8;
+  var totalPages = Math.ceil(crons.length / pageSize);
+  var p = Math.min(Math.max(0, page), totalPages - 1);
+  var items = crons.slice(p * pageSize, (p + 1) * pageSize);
+
+  var keyboard = [];
+  for (var i = 0; i < items.length; i++) {
+    var c = items[i];
+    var icon = c.isDisabled ? "🔕" : c.isRunning ? "🏃" : "✅";
+    var name = (c.name || "未命名").slice(0, 22);
+    keyboard.push([{ text: icon + " " + name, callback_data: "cron_" + c.id }]);
+  }
+
+  var nav = [];
+  if (p > 0) nav.push({ text: "⬅️", callback_data: "tasks_" + (p - 1) });
+  nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "tasks_" + (p + 1) });
+  keyboard.push(nav);
+  keyboard.push([
+    { text: "🔄 刷新", callback_data: "tasks_refresh_" + p },
+    { text: "➕ 新建", callback_data: "task_new" }
+  ]);
+
+  var running = crons.filter(function(c) { return c.isRunning; }).length;
+  var enabled = crons.filter(function(c) { return !c.isDisabled; }).length;
+  var text = "📋 <b>任务管理</b>\n\n共 " + crons.length + " 个 | ✅" + enabled + " 🏃" + running;
+
+  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
+  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+async function showCron(chatId, msgId, cronId, userId, env) {
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var result = await qlApi(env, qlConfig, userId, "GET", "/open/crons/" + cronId, null);
+  if (result.code !== 200 || !result.data) {
+    return await editMsg(env, chatId, msgId, "❌ 任务不存在", {
+      reply_markup: { inline_keyboard: [[{ text: "⬅️ 返回", callback_data: "tasks_0" }]] }
+    });
+  }
+
+  var c = result.data;
+  var status = c.isDisabled ? "🔕 已禁用" : c.isRunning ? "🏃 运行中" : "✅ 已启用";
+  var text = "📋 <b>" + (c.name || "未命名") + "</b>\n\n";
+  text += "状态: " + status + "\n";
+  text += "定时: <code>" + (c.schedule || "无") + "</code>\n";
+  text += "命令: <code>" + (c.command || "无") + "</code>";
+
+  var kb = [];
+  if (c.isRunning) {
+    kb.push([{ text: "⏹️ 停止运行", callback_data: "cron_stop_" + cronId }]);
+  } else {
+    kb.push([{ text: "▶️ 运行任务", callback_data: "cron_run_" + cronId }]);
+  }
+  kb.push([
+    c.isDisabled ? { text: "✅ 启用", callback_data: "cron_en_" + cronId } : { text: "🔕 禁用", callback_data: "cron_dis_" + cronId },
+    { text: "✏️ 编辑定时", callback_data: "cron_edit_" + cronId }
+  ]);
+  kb.push([
+    { text: "📄 查看日志", callback_data: "cron_log_" + cronId },
+    { text: "🗑️ 删除", callback_data: "cron_del_" + cronId }
+  ]);
+  kb.push([{ text: "⬅️ 返回列表", callback_data: "tasks_0" }]);
+
+  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
+}
+
+// ==================== 环境变量 ====================
+
+async function cmdEnvs(chatId, userId, page, env, msgId) {
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var result = await qlApi(env, qlConfig, userId, "GET", "/open/envs", null);
+  var envs = toArray(result);
+
+  if (envs.length === 0) {
+    var text = "🔑 <b>环境变量</b>\n\n暂无变量";
+    var kb = { inline_keyboard: [[{ text: "➕ 添加变量", callback_data: "env_add" }]] };
+    if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: kb });
+    return await sendMsg(env, chatId, text, { reply_markup: kb });
+  }
+
+  var pageSize = 8;
+  var totalPages = Math.ceil(envs.length / pageSize);
+  var p = Math.min(Math.max(0, page), totalPages - 1);
+  var items = envs.slice(p * pageSize, (p + 1) * pageSize);
+
+  var keyboard = [];
+  for (var i = 0; i < items.length; i++) {
+    var e = items[i];
+    var icon = e.status === 0 ? "✅" : "🔕";
+    var name = (e.name || "未命名").slice(0, 22);
+    keyboard.push([{ text: icon + " " + name, callback_data: "env_" + e.id }]);
+  }
+
+  var nav = [];
+  if (p > 0) nav.push({ text: "⬅️", callback_data: "envs_" + (p - 1) });
+  nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "envs_" + (p + 1) });
+  keyboard.push(nav);
+  keyboard.push([
+    { text: "➕ 添加", callback_data: "env_add" },
+    { text: "🔄 刷新", callback_data: "envs_refresh_" + p }
+  ]);
+
+  var text = "🔑 <b>环境变量</b>\n\n共 " + envs.length + " 个";
+  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
+  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+async function showEnv(chatId, msgId, envId, userId, env) {
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var result = await qlApi(env, qlConfig, userId, "GET", "/open/envs", null);
+  var envs = toArray(result);
+  var e = envs.find(function(x) { return String(x.id) === String(envId); });
+
+  if (!e) {
+    return await editMsg(env, chatId, msgId, "❌ 变量不存在", {
+      reply_markup: { inline_keyboard: [[{ text: "⬅️ 返回", callback_data: "envs_0" }]] }
+    });
+  }
+
+  var status = e.status === 0 ? "✅ 已启用" : "🔕 已禁用";
+  var text = "🔑 <b>" + e.name + "</b>\n\n";
+  text += "状态: " + status + "\n";
+  text += "值: <code>" + (e.value || "") + "</code>";
+  if (e.remarks) text += "\n备注: " + e.remarks;
+
+  var kb = [];
+  kb.push([e.status === 0
+    ? { text: "🔕 禁用", callback_data: "env_dis_" + envId }
+    : { text: "✅ 启用", callback_data: "env_en_" + envId }
+  ]);
+  kb.push([
+    { text: "✏️ 编辑", callback_data: "env_edit_" + envId },
+    { text: "🗑️ 删除", callback_data: "env_del_" + envId }
+  ]);
+  kb.push([{ text: "⬅️ 返回列表", callback_data: "envs_0" }]);
+
+  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
+}
+
+// ==================== 订阅管理 ====================
+
+async function cmdSubs(chatId, userId, page, env, msgId) {
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var result = await qlApi(env, qlConfig, userId, "GET", "/open/subscriptions", null);
+  var subs = toArray(result);
+
+  if (subs.length === 0) {
+    var text = "📦 <b>订阅管理</b>\n\n暂无订阅";
+    var kb = { inline_keyboard: [[{ text: "➕ 添加订阅", callback_data: "sub_add" }]] };
+    if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: kb });
+    return await sendMsg(env, chatId, text, { reply_markup: kb });
+  }
+
+  var pageSize = 8;
+  var totalPages = Math.ceil(subs.length / pageSize);
+  var p = Math.min(Math.max(0, page), totalPages - 1);
+  var items = subs.slice(p * pageSize, (p + 1) * pageSize);
+
+  var keyboard = [];
+  for (var i = 0; i < items.length; i++) {
+    var s = items[i];
+    var icon = s.is_disabled ? "🔕" : "✅";
+    var name = (s.name || "未命名").slice(0, 22);
+    keyboard.push([{ text: icon + " " + name, callback_data: "sub_" + s.id }]);
+  }
+
+  var nav = [];
+  if (p > 0) nav.push({ text: "⬅️", callback_data: "subs_" + (p - 1) });
+  nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "subs_" + (p + 1) });
+  keyboard.push(nav);
+  keyboard.push([
+    { text: "➕ 添加", callback_data: "sub_add" },
+    { text: "🔄 刷新", callback_data: "subs_refresh_" + p }
+  ]);
+
+  var text = "📦 <b>订阅管理</b>\n\n共 " + subs.length + " 个";
+  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
+  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+async function showSub(chatId, msgId, subId, userId, env) {
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var result = await qlApi(env, qlConfig, userId, "GET", "/open/subscriptions", null);
+  var subs = toArray(result);
+  var s = subs.find(function(x) { return String(x.id) === String(subId); });
+
+  if (!s) {
+    return await editMsg(env, chatId, msgId, "❌ 订阅不存在", {
+      reply_markup: { inline_keyboard: [[{ text: "⬅️ 返回", callback_data: "subs_0" }]] }
+    });
+  }
+
+  var status = s.is_disabled ? "🔕 已禁用" : "✅ 已启用";
+  var text = "📦 <b>" + s.name + "</b>\n\n";
+  text += "状态: " + status + "\n";
+  text += "定时: <code>" + (s.schedule || "无") + "</code>\n";
+  text += "URL: <code>" + (s.url || "") + "</code>";
+
+  var kb = [];
+  kb.push([{ text: "▶️ 运行", callback_data: "sub_run_" + subId }]);
+  kb.push([s.is_disabled
+    ? { text: "✅ 启用", callback_data: "sub_en_" + subId }
+    : { text: "🔕 禁用", callback_data: "sub_dis_" + subId }
+  ]);
+  kb.push([{ text: "🗑️ 删除", callback_data: "sub_del_" + subId }]);
+  kb.push([{ text: "⬅️ 返回列表", callback_data: "subs_0" }]);
+
+  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
+}
+
+// ==================== 依赖管理 ====================
+
+async function cmdDeps(chatId, userId, env, msgId) {
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var results = await Promise.allSettled([
+    qlApi(env, qlConfig, userId, "GET", "/open/dependencies?type=python3", null),
+    qlApi(env, qlConfig, userId, "GET", "/open/dependencies?type=nodejs", null),
+    qlApi(env, qlConfig, userId, "GET", "/open/dependencies?type=linux", null)
+  ]);
+
+  var pythonDeps = results[0].status === "fulfilled" ? toArray(results[0].value) : [];
+  var nodeDeps = results[1].status === "fulfilled" ? toArray(results[1].value) : [];
+  var linuxDeps = results[2].status === "fulfilled" ? toArray(results[2].value) : [];
+  var total = pythonDeps.length + nodeDeps.length + linuxDeps.length;
+
+  var kb = [
+    [{ text: "🐍 Python (" + pythonDeps.length + ")", callback_data: "dep_list_python3" }],
+    [{ text: "📦 Node.js (" + nodeDeps.length + ")", callback_data: "dep_list_nodejs" }],
+    [{ text: "🐧 Linux (" + linuxDeps.length + ")", callback_data: "dep_list_linux" }],
+    [{ text: "🔄 刷新", callback_data: "deps_refresh" }]
+  ];
+
+  var text = "📚 <b>依赖管理</b>\n\n共 " + total + " 个依赖";
+  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
+  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: kb } });
+}
+
+async function showDepList(chatId, msgId, type, page, userId, env) {
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var result = await qlApi(env, qlConfig, userId, "GET", "/open/dependencies?type=" + type, null);
+  var deps = toArray(result);
+  var typeNames = { python3: "🐍 Python", nodejs: "📦 Node.js", linux: "🐧 Linux" };
+  var typeName = typeNames[type] || type;
+
+  if (deps.length === 0) {
+    var kb = [
+      [{ text: "➕ 添加依赖", callback_data: "dep_add_" + type }],
+      [{ text: "⬅️ 返回", callback_data: "deps_main" }]
+    ];
+    return await editMsg(env, chatId, msgId, typeName + " <b>依赖</b>\n\n暂无依赖", { reply_markup: { inline_keyboard: kb } });
+  }
+
+  var pageSize = 6;
+  var totalPages = Math.ceil(deps.length / pageSize);
+  var p = Math.min(Math.max(0, page), totalPages - 1);
+  var items = deps.slice(p * pageSize, (p + 1) * pageSize);
+
+  var keyboard = [];
+  for (var i = 0; i < items.length; i++) {
+    var d = items[i];
+    var icon = d.status === 0 ? "✅" : d.status === 1 ? "⏳" : "❌";
+    var name = (d.name || "未知").slice(0, 14);
+    keyboard.push([
+      { text: icon + " " + name, callback_data: "noop" },
+      { text: "🔄", callback_data: "dep_reinstall_" + d.id + "_" + type },
+      { text: "🗑️", callback_data: "dep_del_" + d.id + "_" + type }
+    ]);
+  }
+
+  var nav = [];
+  if (p > 0) nav.push({ text: "⬅️", callback_data: "dep_page_" + type + "_" + (p - 1) });
+  nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+  if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "dep_page_" + type + "_" + (p + 1) });
+  keyboard.push(nav);
+  keyboard.push([
+    { text: "➕ 添加", callback_data: "dep_add_" + type },
+    { text: "🔄 刷新", callback_data: "dep_refresh_" + type }
+  ]);
+  keyboard.push([{ text: "⬅️ 返回", callback_data: "deps_main" }]);
+
+  var text = typeName + " <b>依赖</b>\n\n共 " + deps.length + " 个";
+  await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+// ==================== 脚本管理 ====================
+
+async function cmdScripts(chatId, userId, folder, page, env, msgId) {
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var result = await qlApi(env, qlConfig, userId, "GET", "/open/scripts", null);
+  if (result.code !== 200) {
+    var text = "❌ 获取失败: " + (result.message || "未知错误");
+    if (msgId) return await editMsg(env, chatId, msgId, text);
+    return await sendMsg(env, chatId, text);
+  }
+
+  var data = result.data || [];
+  var folders = [];
+  var files = [];
+
+  if (!folder) {
+    for (var i = 0; i < data.length; i++) {
+      var item = data[i];
+      if (item.children && item.children.length > 0) {
+        folders.push(item.title);
+      } else if (item.title) {
+        files.push(item.title);
+      }
+    }
+  } else {
+    var findNode = function(items, target) {
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (item.title === target) return item;
+        if (item.children) {
+          var found = findNode(item.children, target);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    var node = findNode(data, folder);
+    if (node && node.children) {
+      for (var i = 0; i < node.children.length; i++) {
+        var child = node.children[i];
+        if (child.children && child.children.length > 0) {
+          folders.push(child.title);
+        } else if (child.title) {
+          files.push(child.title);
+        }
+      }
+    }
+  }
+
+  var keyboard = [];
+  if (folder) {
+    keyboard.push([{ text: "⬅️ 返回根目录", callback_data: "scripts_root_0" }]);
+  }
+
+  for (var i = 0; i < folders.length; i++) {
+    var fname = folders[i];
+    keyboard.push([{ text: "📂 " + fname.slice(0, 28), callback_data: "sdir_" + encodeURIComponent(fname).slice(0, 50) }]);
+  }
+
+  var pageSize = 5;
+  var totalPages = Math.max(1, Math.ceil(files.length / pageSize));
+  var p = Math.min(Math.max(0, page), totalPages - 1);
+  var pageFiles = files.slice(p * pageSize, (p + 1) * pageSize);
+
+  for (var i = 0; i < pageFiles.length; i++) {
+    var f = pageFiles[i];
+    var displayName = f.length > 18 ? f.slice(0, 18) + ".." : f;
+    var path = folder ? folder + "/" + f : f;
+    var encodedPath = encodeURIComponent(path).slice(0, 40);
+    keyboard.push([
+      { text: "📄 " + displayName, callback_data: "scrview_" + encodedPath },
+      { text: "▶️", callback_data: "scrrun_" + encodedPath },
+      { text: "🗑️", callback_data: "scrdel_" + encodedPath }
+    ]);
+  }
+
+  if (files.length > pageSize) {
+    var nav = [];
+    var folderParam = folder ? encodeURIComponent(folder).slice(0, 30) : "";
+    if (p > 0) nav.push({ text: "⬅️", callback_data: "scrp_" + folderParam + "_" + (p - 1) });
+    nav.push({ text: (p + 1) + "/" + totalPages, callback_data: "noop" });
+    if (p < totalPages - 1) nav.push({ text: "➡️", callback_data: "scrp_" + folderParam + "_" + (p + 1) });
+    keyboard.push(nav);
+  }
+
+  keyboard.push([{ text: "🔄 刷新", callback_data: folder ? "scr_refresh_" + encodeURIComponent(folder).slice(0, 40) : "scr_refresh_root" }]);
+
+  var title = folder || "根目录";
+  var text = "📁 <b>脚本管理 - " + title + "</b>\n\n📂 " + folders.length + " 文件夹 | 📄 " + files.length + " 文件";
+
+  if (msgId) return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: keyboard } });
+  return await sendMsg(env, chatId, text, { reply_markup: { inline_keyboard: keyboard } });
+}
+
+async function sendScriptFile(chatId, msgId, path, userId, env) {
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var lastSlash = path.lastIndexOf("/");
+  var filename = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+  var dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
+
+  try {
+    await editMsg(env, chatId, msgId, "⏳ 正在获取: <code>" + escapeHtml(filename) + "</code>...");
+
+    var endpoint = "/open/scripts/" + encodeURIComponent(filename) + "?path=" + encodeURIComponent(dir);
+    var result = await qlApi(env, qlConfig, userId, "GET", endpoint, null);
+
+    if (result.code !== 200 || !result.data) {
+      throw new Error(result.message || "获取失败");
+    }
+
+    var content = result.data;
+    var blob = new Blob([content], { type: "text/plain" });
+    var formData = new FormData();
+    formData.append("chat_id", String(chatId));
+    formData.append("document", blob, filename);
+
+    var sizeKB = (content.length / 1024).toFixed(2);
+    var caption = "📄 <b>" + escapeHtml(filename) + "</b>\n\n";
+    caption += "📁 路径: <code>" + escapeHtml(path) + "</code>\n";
+    caption += "📏 大小: " + content.length + " 字节 (" + sizeKB + " KB)";
+
+    formData.append("caption", caption);
+    formData.append("parse_mode", "HTML");
+
+    var resp = await fetch("https://api.telegram.org/bot" + env.TG_BOT_TOKEN + "/sendDocument", {
+      method: "POST",
+      body: formData
+    });
+
+    var sendResult = await resp.json();
+    if (!sendResult.ok) {
+      throw new Error(sendResult.description || "发送失败");
+    }
+
+    var encodedPath = encodeURIComponent(path).slice(0, 40);
+    var kb = [
+      [
+        { text: "▶️ 添加任务", callback_data: "scrrun_" + encodedPath },
+        { text: "🗑️ 删除", callback_data: "scrdel_" + encodedPath }
+      ],
+      [
+        { text: "📤 重新发送", callback_data: "scrview_" + encodedPath },
+        { text: "⬅️ 返回", callback_data: dir ? "sdir_" + encodeURIComponent(dir).slice(0, 50) : "scripts_root_0" }
+      ]
+    ];
+
+    return await editMsg(env, chatId, msgId, "✅ 已发送: <b>" + escapeHtml(filename) + "</b>", { reply_markup: { inline_keyboard: kb } });
+  } catch (error) {
+    var kb = [[{ text: "⬅️ 返回", callback_data: "scripts_root_0" }]];
+    return await editMsg(env, chatId, msgId, "❌ 失败: " + error.message, { reply_markup: { inline_keyboard: kb } });
+  }
+}
+
+// ==================== 文件处理 ====================
+
+async function handleFileUrl(msg, env) {
+  var chatId = msg.chat.id;
+  var userId = msg.from.id;
+  var url = (msg.text || "").trim();
+
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var urlMatch = url.match(/https?:\/\/[^\s]+/i);
+  if (!urlMatch) {
+    return await sendMsg(env, chatId, "❌ 无法识别链接");
+  }
+  url = urlMatch[0];
+
+  if (url.includes("github.com") && url.includes("/blob/")) {
+    url = url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
+  }
+  if (url.includes("gitee.com") && url.includes("/blob/")) {
+    url = url.replace("/blob/", "/raw/");
+  }
+
+  var urlParts = url.split("/");
+  var fileName = urlParts[urlParts.length - 1];
+  if (fileName.includes("?")) {
+    fileName = fileName.split("?")[0];
+  }
+
+  var validExts = [".js", ".py", ".sh", ".ts"];
+  var lastDot = fileName.lastIndexOf(".");
+  var ext = lastDot >= 0 ? fileName.slice(lastDot).toLowerCase() : "";
+
+  if (validExts.indexOf(ext) < 0) {
+    return await sendMsg(env, chatId, "❌ 不支持的文件类型: " + (ext || "无扩展名"));
+  }
+
+  await sendMsg(env, chatId, "⏳ 正在下载: " + fileName);
+
+  try {
+    var fileResp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!fileResp.ok) throw new Error("下载失败: HTTP " + fileResp.status);
+
+    var content = await fileResp.text();
+    if (content.length > 1024 * 1024) throw new Error("文件过大 (最大 1MB)");
+
+    var uploadResult = await qlApi(env, qlConfig, userId, "POST", "/open/scripts", {
+      filename: fileName,
+      content: content,
+      path: ""
+    });
+
+    if (uploadResult.code !== 200) throw new Error(uploadResult.message || "上传失败");
+
+    var kb = { inline_keyboard: [[
+      { text: "✅ 创建定时任务", callback_data: "newcron_" + encodeURIComponent(fileName) },
+      { text: "❌ 仅保存", callback_data: "noop" }
+    ]] };
+
+    await sendMsg(env, chatId, "✅ <b>" + fileName + "</b> 上传成功！\n\n是否创建定时任务？", { reply_markup: kb });
+  } catch (error) {
+    await sendMsg(env, chatId, "❌ 处理失败: " + error.message);
+  }
+}
+
+async function handleDocument(msg, env) {
+  var chatId = msg.chat.id;
+  var userId = msg.from.id;
+  var doc = msg.document;
+  var fileName = doc.file_name;
+
+  var qlConfig = getQlConfigForUser(env, userId);
+  if (!qlConfig) return;
+
+  var validExts = [".js", ".py", ".sh", ".ts"];
+  var lastDot = fileName.lastIndexOf(".");
+  var ext = lastDot >= 0 ? fileName.slice(lastDot).toLowerCase() : "";
+
+  if (validExts.indexOf(ext) < 0) {
+    return await sendMsg(env, chatId, "❌ 不支持的文件类型 " + ext);
+  }
+
+  if (doc.file_size > 1024 * 1024) {
+    return await sendMsg(env, chatId, "❌ 文件过大 (最大 1MB)");
+  }
+
+  await sendMsg(env, chatId, "⏳ 正在上传: " + fileName);
+
+  try {
+    var fileInfo = await tgApi(env.TG_BOT_TOKEN, "getFile", { file_id: doc.file_id });
+    if (!fileInfo.ok) throw new Error("获取文件信息失败");
+
+    var fileUrl = "https://api.telegram.org/file/bot" + env.TG_BOT_TOKEN + "/" + fileInfo.result.file_path;
+    var fileResp = await fetch(fileUrl);
+    var content = await fileResp.text();
+
+    var uploadResult = await qlApi(env, qlConfig, userId, "POST", "/open/scripts", {
+      filename: fileName,
+      content: content,
+      path: ""
+    });
+
+    if (uploadResult.code !== 200) throw new Error(uploadResult.message || "上传失败");
+
+    var kb = { inline_keyboard: [[
+      { text: "✅ 创建定时任务", callback_data: "newcron_" + encodeURIComponent(fileName) },
+      { text: "❌ 仅保存", callback_data: "noop" }
+    ]] };
+
+    await sendMsg(env, chatId, "✅ <b>" + fileName + "</b> 上传成功！\n\n是否创建定时任务？", { reply_markup: kb });
+  } catch (error) {
+    await sendMsg(env, chatId, "❌ 上传失败: " + error.message);
+  }
+}
+
+// ==================== 回调处理 ====================
+
+async function handleCallback(cb, env) {
+  var chatId = cb.message.chat.id;
+  var msgId = cb.message.message_id;
+  var userId = cb.from.id;
+  var data = cb.data;
+
+  console.log("Callback:", data, "from", userId);
+  await answerCb(env, cb.id, "⏳ 处理中...");
+
+  if (data === "noop") return;
+
+  var qlConfig = getQlConfigForUser(env, userId);
+
+  // 帮助按钮快捷命令
+  if (data === "cmd_tasks") {
+    if (!await checkUserAccess(env, chatId, userId)) return;
+    return await cmdTasks(chatId, userId, 0, env, null);
+  }
+  if (data === "cmd_envs") {
+    if (!await checkUserAccess(env, chatId, userId)) return;
+    return await cmdEnvs(chatId, userId, 0, env, null);
+  }
+  if (data === "cmd_subs") {
+    if (!await checkUserAccess(env, chatId, userId)) return;
+    return await cmdSubs(chatId, userId, 0, env, null);
+  }
+  if (data === "cmd_deps") {
+    if (!await checkUserAccess(env, chatId, userId)) return;
+    return await cmdDeps(chatId, userId, env, null);
+  }
+  if (data === "cmd_scripts") {
+    if (!await checkUserAccess(env, chatId, userId)) return;
+    return await cmdScripts(chatId, userId, "", 0, env, null);
+  }
+  if (data === "cmd_users") {
+    if (!isAdmin(userId, env)) {
+      return await sendMsg(env, chatId, "⛔ 仅管理员可用");
+    }
+    return await cmdUsers(chatId, 0, env, null);
+  }
+
+  // 设置流程
+  if (data === "setup_start") {
+    userStates.set(userId, { action: "setup_url", chatId: chatId, msgId: msgId });
+    return await editMsg(env, chatId, msgId,
+      "🔧 <b>配置青龙面板 (1/4)</b>\n\n请输入您的青龙面板地址\n例: <code>http://192.168.1.100:5700</code>\n\n/cancel 取消"
+    );
+  }
+
+  // 删除我的配置
+  if (data === "delete_my_config") {
+    var kb = { inline_keyboard: [
+      [{ text: "✅ 确认删除", callback_data: "confirm_delete_config" }],
+      [{ text: "❌ 取消", callback_data: "cancel_delete" }]
+    ] };
+    return await editMsg(env, chatId, msgId, "⚠️ 确定要删除您的配置吗？\n\n删除后需要重新添加", { reply_markup: kb });
+  }
+
+  if (data === "confirm_delete_config") {
+    await deleteUserConfig(env, userId);
+    userSessions.delete(String(userId));
+    return await editMsg(env, chatId, msgId, "✅ 配置已删除");
+  }
+
+  if (data === "cancel_delete") {
+    return await cmdMyConfig(chatId, userId, env);
+  }
+
+  // 测试连接
+  if (data === "test_connection") {
+    var testConfig = getQlConfigForUser(env, userId);
+    if (!testConfig) {
+      return await sendMsg(env, chatId, "❌ 请先解锁或配置青龙面板");
+    }
+    try {
+      await getQlToken(env, testConfig, userId);
+      return await sendMsg(env, chatId, "✅ 连接成功！");
+    } catch (e) {
+      return await sendMsg(env, chatId, "❌ 连接失败: " + e.message);
+    }
+  }
+
+  // 用户管理
+  if (data === "users_refresh") {
+    return await cmdUsers(chatId, 0, env, msgId);
+  }
+  if (data.startsWith("users_")) {
+    var page = parseInt(data.slice(6)) || 0;
+    return await cmdUsers(chatId, page, env, msgId);
+  }
+  if (data.startsWith("user_ban_")) {
+    var targetId = data.slice(9);
+    var config = await getUserConfig(env, targetId);
+    if (config) {
+      config.banned = true;
+      await saveUserConfig(env, targetId, config);
+    }
+    return await showUserDetail(chatId, msgId, targetId, env);
+  }
+  if (data.startsWith("user_unban_")) {
+    var targetId = data.slice(11);
+    var config = await getUserConfig(env, targetId);
+    if (config) {
+      config.banned = false;
+      await saveUserConfig(env, targetId, config);
+    }
+    return await showUserDetail(chatId, msgId, targetId, env);
+  }
+  if (data.startsWith("user_del_")) {
+    var targetId = data.slice(9);
+    await deleteUserConfig(env, targetId);
+    userSessions.delete(targetId);
+    return await cmdUsers(chatId, 0, env, msgId);
+  }
+  if (data.startsWith("user_")) {
+    var targetId = data.slice(5);
+    return await showUserDetail(chatId, msgId, targetId, env);
+  }
+
+  // 需要青龙配置的操作
+  if (!qlConfig) {
+    if (!await checkUserAccess(env, chatId, userId)) return;
+    return;
+  }
+
+  // 任务操作
+  if (data.startsWith("tasks_refresh_")) {
+    var page = parseInt(data.slice(14)) || 0;
+    return await cmdTasks(chatId, userId, page, env, msgId);
+  }
+  if (data.startsWith("tasks_")) {
+    var page = parseInt(data.slice(6)) || 0;
+    return await cmdTasks(chatId, userId, page, env, msgId);
+  }
+  if (data.startsWith("cron_run_")) {
+    var id = data.slice(9);
+    await qlApi(env, qlConfig, userId, "PUT", "/open/crons/run", [parseInt(id)]);
+    return await showCron(chatId, msgId, id, userId, env);
+  }
+  if (data.startsWith("cron_stop_")) {
+    var id = data.slice(10);
+    await qlApi(env, qlConfig, userId, "PUT", "/open/crons/stop", [parseInt(id)]);
+    return await showCron(chatId, msgId, id, userId, env);
+  }
+  if (data.startsWith("cron_en_")) {
+    var id = data.slice(8);
+    await qlApi(env, qlConfig, userId, "PUT", "/open/crons/enable", [parseInt(id)]);
+    return await showCron(chatId, msgId, id, userId, env);
+  }
+  if (data.startsWith("cron_dis_")) {
+    var id = data.slice(9);
+    await qlApi(env, qlConfig, userId, "PUT", "/open/crons/disable", [parseInt(id)]);
+    return await showCron(chatId, msgId, id, userId, env);
+  }
+  if (data.startsWith("cron_del_")) {
+    var id = data.slice(9);
+    await qlApi(env, qlConfig, userId, "DELETE", "/open/crons", [parseInt(id)]);
+    return await cmdTasks(chatId, userId, 0, env, msgId);
+  }
+  if (data.startsWith("cron_edit_")) {
+    var id = data.slice(10);
+    userStates.set(userId, { action: "edit_cron", cronId: id, chatId: chatId, msgId: msgId });
+    return await editMsg(env, chatId, msgId,
+      "✏️ <b>编辑定时</b>\n\n请输入新的 cron 表达式\n例: <code>0 8 * * *</code>\n\n/cancel 取消",
+      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "cron_" + id }]] } }
+    );
+  }
+  if (data.startsWith("cron_log_")) {
+    var id = data.slice(9);
+    var logRes = await qlApi(env, qlConfig, userId, "GET", "/open/crons/" + id + "/log", null);
+    var logContent = logRes.code === 200 ? (logRes.data || "暂无日志") : "获取日志失败";
+    if (logContent.length > 3000) {
+      logContent = "...(已截取)\n" + logContent.slice(-3000);
+    }
+    var text = "📄 <b>任务日志</b>\n\n<pre>" + escapeHtml(logContent) + "</pre>";
+    var kb = [[
+      { text: "🔄 刷新", callback_data: "cron_log_" + id },
+      { text: "⬅️ 返回", callback_data: "cron_" + id }
+    ]];
+    return await editMsg(env, chatId, msgId, text, { reply_markup: { inline_keyboard: kb } });
+  }
+  if (data === "task_new") {
+    userStates.set(userId, { action: "new_cron", chatId: chatId, msgId: msgId });
+    return await editMsg(env, chatId, msgId,
+      "➕ <b>新建任务</b>\n\n格式: <code>名称|命令|定时</code>\n例: <code>测试|task test.js|0 8 * * *</code>\n\n/cancel 取消",
+      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "tasks_0" }]] } }
+    );
+  }
+  if (data.startsWith("cron_")) {
+    var id = data.slice(5);
+    return await showCron(chatId, msgId, id, userId, env);
+  }
+  if (data.startsWith("newcron_")) {
+    var fileName = decodeURIComponent(data.slice(8));
+    userStates.set(userId, { action: "create_cron", fileName: fileName, chatId: chatId, msgId: msgId });
+    return await sendMsg(env, chatId,
+      "⏰ 为 <b>" + fileName + "</b> 设置定时\n\n输入 cron 表达式\n或输入 <code>d</code> 使用默认(每天0点)\n\n/cancel 取消"
+    );
+  }
+
+  // 环境变量操作
+  if (data.startsWith("envs_refresh_")) {
+    var page = parseInt(data.slice(13)) || 0;
+    return await cmdEnvs(chatId, userId, page, env, msgId);
+  }
+  if (data.startsWith("envs_")) {
+    var page = parseInt(data.slice(5)) || 0;
+    return await cmdEnvs(chatId, userId, page, env, msgId);
+  }
+  if (data.startsWith("env_en_")) {
+    var id = data.slice(7);
+    await qlApi(env, qlConfig, userId, "PUT", "/open/envs/enable", [parseInt(id)]);
+    return await showEnv(chatId, msgId, id, userId, env);
+  }
+  if (data.startsWith("env_dis_")) {
+    var id = data.slice(8);
+    await qlApi(env, qlConfig, userId, "PUT", "/open/envs/disable", [parseInt(id)]);
+    return await showEnv(chatId, msgId, id, userId, env);
+  }
+  if (data.startsWith("env_del_")) {
+    var id = data.slice(8);
+    await qlApi(env, qlConfig, userId, "DELETE", "/open/envs", [parseInt(id)]);
+    return await cmdEnvs(chatId, userId, 0, env, msgId);
+  }
+  if (data === "env_add") {
+    userStates.set(userId, { action: "add_env", chatId: chatId, msgId: msgId });
+    return await editMsg(env, chatId, msgId,
+      "➕ <b>添加变量</b>\n\n格式: <code>名称=值</code>\n\n/cancel 取消",
+      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "envs_0" }]] } }
+    );
+  }
+  if (data.startsWith("env_edit_")) {
+    var id = data.slice(9);
+    userStates.set(userId, { action: "edit_env", envId: id, chatId: chatId, msgId: msgId });
+    return await editMsg(env, chatId, msgId,
+      "✏️ <b>编辑变量</b>\n\n格式: <code>名称=值</code>\n\n/cancel 取消",
+      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "env_" + id }]] } }
+    );
+  }
+  if (data.startsWith("env_")) {
+    var id = data.slice(4);
+    return await showEnv(chatId, msgId, id, userId, env);
+  }
+
+  // 订阅操作
+  if (data.startsWith("subs_refresh_")) {
+    var page = parseInt(data.slice(13)) || 0;
+    return await cmdSubs(chatId, userId, page, env, msgId);
+  }
+  if (data.startsWith("subs_")) {
+    var page = parseInt(data.slice(5)) || 0;
+    return await cmdSubs(chatId, userId, page, env, msgId);
+  }
+  if (data.startsWith("sub_run_")) {
+    var id = data.slice(8);
+    await qlApi(env, qlConfig, userId, "PUT", "/open/subscriptions/run", [parseInt(id)]);
+    return await showSub(chatId, msgId, id, userId, env);
+  }
+  if (data.startsWith("sub_en_")) {
+    var id = data.slice(7);
+    await qlApi(env, qlConfig, userId, "PUT", "/open/subscriptions/enable", [parseInt(id)]);
+    return await showSub(chatId, msgId, id, userId, env);
+  }
+  if (data.startsWith("sub_dis_")) {
+    var id = data.slice(8);
+    await qlApi(env, qlConfig, userId, "PUT", "/open/subscriptions/disable", [parseInt(id)]);
+    return await showSub(chatId, msgId, id, userId, env);
+  }
+  if (data.startsWith("sub_del_")) {
+    var id = data.slice(8);
+    await qlApi(env, qlConfig, userId, "DELETE", "/open/subscriptions", [parseInt(id)]);
+    return await cmdSubs(chatId, userId, 0, env, msgId);
+  }
+  if (data === "sub_add") {
+    userStates.set(userId, { action: "add_sub", chatId: chatId, msgId: msgId });
+    return await editMsg(env, chatId, msgId,
+      "➕ <b>添加订阅</b>\n\n格式: <code>名称|URL|定时|分支</code>\n\n/cancel 取消",
+      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "subs_0" }]] } }
+    );
+  }
+  if (data.startsWith("sub_")) {
+    var id = data.slice(4);
+    return await showSub(chatId, msgId, id, userId, env);
+  }
+
+  // 依赖操作
+  if (data === "deps_refresh") {
+    return await cmdDeps(chatId, userId, env, msgId);
+  }
+  if (data === "deps_main") {
+    return await cmdDeps(chatId, userId, env, msgId);
+  }
+  if (data.startsWith("dep_list_")) {
+    var type = data.slice(9);
+    return await showDepList(chatId, msgId, type, 0, userId, env);
+  }
+  if (data.startsWith("dep_page_")) {
+    var rest = data.slice(9);
+    var parts = rest.split("_");
+    var type = parts[0];
+    var page = parseInt(parts[1]) || 0;
+    return await showDepList(chatId, msgId, type, page, userId, env);
+  }
+  if (data.startsWith("dep_refresh_")) {
+    var type = data.slice(12);
+    return await showDepList(chatId, msgId, type, 0, userId, env);
+  }
+  if (data.startsWith("dep_reinstall_")) {
+    var rest = data.slice(14);
+    var parts = rest.split("_");
+    var id = parts[0];
+    var type = parts[1];
+    await qlApi(env, qlConfig, userId, "PUT", "/open/dependencies/reinstall", [parseInt(id)]);
+    return await showDepList(chatId, msgId, type, 0, userId, env);
+  }
+  if (data.startsWith("dep_del_")) {
+    var rest = data.slice(8);
+    var parts = rest.split("_");
+    var id = parts[0];
+    var type = parts[1];
+    await qlApi(env, qlConfig, userId, "DELETE", "/open/dependencies", [parseInt(id)]);
+    return await showDepList(chatId, msgId, type, 0, userId, env);
+  }
+  if (data.startsWith("dep_add_")) {
+    var type = data.slice(8);
+    userStates.set(userId, { action: "add_dep", type: type, chatId: chatId, msgId: msgId });
+    var typeNames = { python3: "Python", nodejs: "Node.js", linux: "Linux" };
+    return await editMsg(env, chatId, msgId,
+      "➕ <b>添加 " + (typeNames[type] || type) + " 依赖</b>\n\n输入依赖名（空格分隔）\n\n/cancel 取消",
+      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "dep_list_" + type }]] } }
+    );
+  }
+
+  // 脚本操作
+  if (data.startsWith("scripts_root_")) {
+    var page = parseInt(data.slice(13)) || 0;
+    return await cmdScripts(chatId, userId, "", page, env, msgId);
+  }
+  if (data.startsWith("sdir_")) {
+    var folder = decodeURIComponent(data.slice(5));
+    return await cmdScripts(chatId, userId, folder, 0, env, msgId);
+  }
+  if (data.startsWith("scrp_")) {
+    var rest = data.slice(5);
+    var lastUnderscore = rest.lastIndexOf("_");
+    var folderEncoded = rest.slice(0, lastUnderscore);
+    var page = parseInt(rest.slice(lastUnderscore + 1)) || 0;
+    var folder = folderEncoded ? decodeURIComponent(folderEncoded) : "";
+    return await cmdScripts(chatId, userId, folder, page, env, msgId);
+  }
+  if (data.startsWith("scr_refresh_")) {
+    var folderPart = data.slice(12);
+    var folder = folderPart === "root" ? "" : decodeURIComponent(folderPart);
+    return await cmdScripts(chatId, userId, folder, 0, env, msgId);
+  }
+  if (data.startsWith("scrview_")) {
+    var path = decodeURIComponent(data.slice(8));
+    return await sendScriptFile(chatId, msgId, path, userId, env);
+  }
+  if (data.startsWith("scrrun_")) {
+    var path = decodeURIComponent(data.slice(7));
+    var lastSlash = path.lastIndexOf("/");
+    var filename = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+    userStates.set(userId, { action: "add_script_cron", filename: filename, path: path, chatId: chatId, msgId: msgId });
+    return await editMsg(env, chatId, msgId,
+      "⏰ <b>添加到运行列表</b>\n\n脚本: <code>" + filename + "</code>\n\n请输入 cron 表达式\n或输入 <code>d</code> 使用默认(每天0点)\n\n/cancel 取消",
+      { reply_markup: { inline_keyboard: [[{ text: "❌ 取消", callback_data: "scripts_root_0" }]] } }
+    );
+  }
+  if (data.startsWith("scrdel_")) {
+    var path = decodeURIComponent(data.slice(7));
+    var lastSlash = path.lastIndexOf("/");
+    var filename = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+    var dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
+    await qlApi(env, qlConfig, userId, "DELETE", "/open/scripts", { filename: filename, path: dir });
+    return await cmdScripts(chatId, userId, dir, 0, env, msgId);
+  }
+
+  console.log("Unhandled callback:", data);
+}
+
+// ==================== 状态输入处理 ====================
+
 async function handleStateInput(msg, state, env) {
-  const chatId = msg.chat.id;
-  const userId = msg.from.id;
-  const text = (msg.text || "").trim();
-  const msgId = state.msgId;
+  var chatId = msg.chat.id;
+  var userId = msg.from.id;
+  var text = (msg.text || "").trim();
+  var msgId = state.msgId;
+
   if (text === "/cancel") {
     userStates.delete(userId);
     return await sendMsg(env, chatId, "❌ 已取消");
   }
+
   try {
+    // 设置流程
+    if (state.action === "setup_url") {
+      if (!text.startsWith("http")) {
+        return await sendMsg(env, chatId, "❌ 请输入有效的 URL，以 http:// 或 https:// 开头");
+      }
+      state.ql_base_url = text.replace(/\/$/, "");
+      state.action = "setup_client_id";
+      userStates.set(userId, state);
+      return await sendMsg(env, chatId,
+        "🔧 <b>配置青龙面板 (2/4)</b>\n\n请输入 Client ID\n\n/cancel 取消"
+      );
+    }
+
+    if (state.action === "setup_client_id") {
+      state.ql_client_id = text;
+      state.action = "setup_client_secret";
+      userStates.set(userId, state);
+      return await sendMsg(env, chatId,
+        "🔧 <b>配置青龙面板 (3/4)</b>\n\n请输入 Client Secret\n\n/cancel 取消"
+      );
+    }
+
+    if (state.action === "setup_client_secret") {
+      state.ql_client_secret = text;
+      state.action = "setup_pin";
+      userStates.set(userId, state);
+      return await sendMsg(env, chatId,
+        "🔧 <b>配置青龙面板 (4/4)</b>\n\n请设置 6 位数字 PIN 码\n用于加密您的凭证\n\n⚠️ PIN 不会存储，请牢记！\n\n/cancel 取消"
+      );
+    }
+
+    if (state.action === "setup_pin") {
+      if (!/^\d{6}$/.test(text)) {
+        return await sendMsg(env, chatId, "❌ PIN 必须是 6 位数字");
+      }
+
+      var testConfig = {
+        baseUrl: state.ql_base_url,
+        clientId: state.ql_client_id,
+        clientSecret: state.ql_client_secret
+      };
+
+      try {
+        await getQlToken(env, testConfig, userId);
+      } catch (e) {
+        userStates.delete(userId);
+        return await sendMsg(env, chatId, "❌ 连接失败: " + e.message + "\n\n请检查配置后重试");
+      }
+
+      var encrypted = await encryptData(testConfig, text, userId);
+      await saveUserConfig(env, userId, {
+        encrypted: encrypted,
+        createdAt: Date.now(),
+        banned: false
+      });
+
+      userSessions.set(String(userId), {
+        qlConfig: testConfig,
+        expiry: Date.now() + SESSION_TIMEOUT
+      });
+
+      userStates.delete(userId);
+      return await sendMsg(env, chatId,
+        "✅ <b>配置成功！</b>\n\n您的青龙面板已添加\n会话有效期 30 分钟\n\n使用 /start 开始操作"
+      );
+    }
+
+    // 解锁 PIN
+    if (state.action === "unlock_pin") {
+      var config = await getUserConfig(env, userId);
+      if (!config) {
+        userStates.delete(userId);
+        return await sendMsg(env, chatId, "❌ 配置不存在，请重新添加");
+      }
+
+      var decrypted = await decryptData(config.encrypted, text, userId);
+      if (!decrypted) {
+        return await sendMsg(env, chatId, "❌ PIN 错误，请重试\n\n/cancel 取消");
+      }
+
+      userSessions.set(String(userId), {
+        qlConfig: decrypted,
+        expiry: Date.now() + SESSION_TIMEOUT
+      });
+
+      userStates.delete(userId);
+      return await sendMsg(env, chatId, "🔓 解锁成功！\n\n使用 /start 开始操作");
+    }
+
+    // 以下需要青龙配置
+    var qlConfig = getQlConfigForUser(env, userId);
+    if (!qlConfig) {
+      userStates.delete(userId);
+      return await sendMsg(env, chatId, "❌ 会话已过期，请重新解锁");
+    }
+
+    // 编辑定时
     if (state.action === "edit_cron") {
-      const result = await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/crons", {
+      var cronRes = await qlApi(env, qlConfig, userId, "GET", "/open/crons/" + state.cronId, null);
+      if (cronRes.code !== 200 || !cronRes.data) {
+        userStates.delete(userId);
+        return await sendMsg(env, chatId, "❌ 任务不存在");
+      }
+      var cron = cronRes.data;
+      var result = await qlApi(env, qlConfig, userId, "PUT", "/open/crons", {
         id: parseInt(state.cronId),
-        schedule: text
+        name: cron.name,
+        command: cron.command,
+        schedule: text,
+        labels: cron.labels || []
       });
       userStates.delete(userId);
-      await clearCache(env, chatId, "tasks");
       if (result.code === 200) {
-        await sendMsg(env, chatId, "✅ 定时已更新为: " + text + "");
-        return await showCron(chatId, msgId, state.cronId, env);
+        await sendMsg(env, chatId, "✅ 定时已更新为: <code>" + text + "</code>");
+        return await showCron(chatId, msgId, state.cronId, userId, env);
       }
       return await sendMsg(env, chatId, "❌ 更新失败: " + (result.message || "未知错误"));
     }
+
+    // 创建任务（从脚本）
     if (state.action === "create_cron") {
-      const schedule = text.toLowerCase() === "default" ? "0 0 * * *" : text;
-      const result = await qlApiCached(env, chatId, "no-cache", 0, "POST", "/open/crons", {
+      var schedule = text.toLowerCase() === "d" ? "0 0 * * *" : text;
+      var result = await qlApi(env, qlConfig, userId, "POST", "/open/crons", {
         name: state.fileName,
         command: "task " + state.fileName,
-        schedule
+        schedule: schedule
       });
       userStates.delete(userId);
-      await clearCache(env, chatId, "tasks");
       if (result.code === 200) {
-        return await sendMsg(env, chatId, "✅ 任务已创建\n\n名称: " + state.fileName + "\n定时: " + schedule + "");
+        return await sendMsg(env, chatId, "✅ 任务已创建\n\n名称: <code>" + state.fileName + "</code>\n定时: <code>" + schedule + "</code>");
       }
       return await sendMsg(env, chatId, "❌ 创建失败: " + (result.message || "未知错误"));
     }
+
+    // 新建任务
     if (state.action === "new_cron") {
-      const parts = text.split("|");
+      var parts = text.split("|");
       if (parts.length < 3) {
         return await sendMsg(env, chatId, "❌ 格式错误，请使用: 名称|命令|定时");
       }
-      const name = parts[0].trim();
-      const command = parts[1].trim();
-      const schedule = parts[2].trim();
-      if (!name || !command || !schedule) {
-        return await sendMsg(env, chatId, "❌ 名称、命令和定时都不能为空");
-      }
-      const result = await qlApiCached(env, chatId, "no-cache", 0, "POST", "/open/crons", {
-        name,
-        command,
-        schedule
+      var result = await qlApi(env, qlConfig, userId, "POST", "/open/crons", {
+        name: parts[0].trim(),
+        command: parts[1].trim(),
+        schedule: parts[2].trim()
       });
       userStates.delete(userId);
-      await clearCache(env, chatId, "tasks");
       if (result.code === 200) {
-        await sendMsg(env, chatId, "✅ 任务创建成功\n\n名称: " + name + "\n命令: " + command + "\n定时: " + schedule + "");
-        return await cmdTasks(chatId, 0, env, null);
+        await sendMsg(env, chatId, "✅ 任务创建成功");
+        return await cmdTasks(chatId, userId, 0, env, null);
       }
       return await sendMsg(env, chatId, "❌ 创建失败: " + (result.message || "未知错误"));
     }
+
+    // 添加环境变量
     if (state.action === "add_env") {
-      const eqIndex = text.indexOf("=");
+      var eqIndex = text.indexOf("=");
       if (eqIndex < 0) {
         return await sendMsg(env, chatId, "❌ 格式错误，请使用: 名称=值");
       }
-      const name = text.slice(0, eqIndex).trim();
-      const value = text.slice(eqIndex + 1).trim();
-      if (!name || !value) {
-        return await sendMsg(env, chatId, "❌ 名称或值不能为空");
-      }
-      const result = await qlApiCached(env, chatId, "no-cache", 0, "POST", "/open/envs", [{ name, value }]);
+      var result = await qlApi(env, qlConfig, userId, "POST", "/open/envs", [{
+        name: text.slice(0, eqIndex).trim(),
+        value: text.slice(eqIndex + 1).trim()
+      }]);
       userStates.delete(userId);
-      await clearCache(env, chatId, "envs");
       if (result.code === 200) {
-        await sendMsg(env, chatId, "✅ 环境变量添加成功\n\n名称: " + name + "\n值: " + value + "");
-        return await cmdEnvs(chatId, 0, env, null);
+        await sendMsg(env, chatId, "✅ 变量添加成功");
+        return await cmdEnvs(chatId, userId, 0, env, null);
       }
       return await sendMsg(env, chatId, "❌ 添加失败: " + (result.message || "未知错误"));
     }
+
+    // 编辑环境变量
     if (state.action === "edit_env") {
-      const eqIndex = text.indexOf("=");
+      var eqIndex = text.indexOf("=");
       if (eqIndex < 0) {
         return await sendMsg(env, chatId, "❌ 格式错误，请使用: 名称=值");
       }
-      const name = text.slice(0, eqIndex).trim();
-      const value = text.slice(eqIndex + 1).trim();
-      if (!name || !value) {
-        return await sendMsg(env, chatId, "❌ 名称或值不能为空");
-      }
-      const result = await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/envs", {
+      var envsRes = await qlApi(env, qlConfig, userId, "GET", "/open/envs", null);
+      var envs = toArray(envsRes);
+      var origEnv = envs.find(function(x) { return String(x.id) === String(state.envId); });
+
+      var result = await qlApi(env, qlConfig, userId, "PUT", "/open/envs", {
         id: parseInt(state.envId),
-        name,
-        value
+        name: text.slice(0, eqIndex).trim(),
+        value: text.slice(eqIndex + 1).trim(),
+        remarks: origEnv ? origEnv.remarks : ""
       });
       userStates.delete(userId);
-      await clearCache(env, chatId, "envs");
       if (result.code === 200) {
-        await sendMsg(env, chatId, "✅ 环境变量更新成功\n\n名称: " + name + "\n值: " + value + "");
-        return await showEnv(chatId, msgId, state.envId, env);
+        await sendMsg(env, chatId, "✅ 变量已更新");
+        return await showEnv(chatId, msgId, state.envId, userId, env);
       }
       return await sendMsg(env, chatId, "❌ 更新失败: " + (result.message || "未知错误"));
     }
+
+    // 添加订阅
     if (state.action === "add_sub") {
-      const parts = text.split("|");
+      var parts = text.split("|");
       if (parts.length < 2) {
         return await sendMsg(env, chatId, "❌ 格式错误，请使用: 名称|URL|定时|分支");
       }
-      const name = parts[0].trim();
-      const url = parts[1].trim();
-      const schedule = parts[2] ? parts[2].trim() : "0 0 * * *";
-      const branch = parts[3] ? parts[3].trim() : "";
-      if (!name || !url) {
-        return await sendMsg(env, chatId, "❌ 名称和URL不能为空");
-      }
-      const body = { name, url, schedule, type: "public-repo" };
-      if (branch) body.branch = branch;
-      const result = await qlApiCached(env, chatId, "no-cache", 0, "POST", "/open/subscriptions", body);
+      var body = {
+        name: parts[0].trim(),
+        url: parts[1].trim(),
+        schedule: parts[2] ? parts[2].trim() : "0 0 * * *",
+        type: "public-repo"
+      };
+      if (parts[3]) body.branch = parts[3].trim();
+      var result = await qlApi(env, qlConfig, userId, "POST", "/open/subscriptions", body);
       userStates.delete(userId);
-      await clearCache(env, chatId, "subs");
       if (result.code === 200) {
-        await sendMsg(env, chatId, "✅ 订阅添加成功\n\n名称: " + name + "\n定时: " + schedule + "");
-        return await cmdSubs(chatId, 0, env, null);
+        await sendMsg(env, chatId, "✅ 订阅添加成功");
+        return await cmdSubs(chatId, userId, 0, env, null);
       }
       return await sendMsg(env, chatId, "❌ 添加失败: " + (result.message || "未知错误"));
     }
-    if (state.action === "edit_sub") {
-      const subRes = await qlApiCached(env, chatId, "subs:list", CACHE_TTL.subs, "GET", "/open/subscriptions", null);
-      const subs = toArray(subRes);
-      const sub = subs.find(function(s) { return String(s.id) === String(state.subId); });
-      if (!sub) {
-        userStates.delete(userId);
-        return await sendMsg(env, chatId, "❌ 订阅不存在");
-      }
-      const parts = text.split("|");
-      const updateData = Object.assign({}, sub);
-      if (parts[0] && parts[0].trim()) updateData.name = parts[0].trim();
-      if (parts[1] && parts[1].trim()) updateData.url = parts[1].trim();
-      if (parts[2] && parts[2].trim()) updateData.schedule = parts[2].trim();
-      if (parts[3] && parts[3].trim()) updateData.branch = parts[3].trim();
-      const result = await qlApiCached(env, chatId, "no-cache", 0, "PUT", "/open/subscriptions", updateData);
-      userStates.delete(userId);
-      await clearCache(env, chatId, "subs");
-      if (result.code === 200) {
-        await sendMsg(env, chatId, "✅ 订阅更新成功");
-        return await showSub(chatId, msgId, state.subId, env);
-      }
-      return await sendMsg(env, chatId, "❌ 更新失败: " + (result.message || "未知错误"));
-    }
+
+    // 添加依赖
     if (state.action === "add_dep") {
-      const depNames = text.split(/\s+/);
-      const typeMap = { "python3": 0, "nodejs": 1, "linux": 2 };
-      const typeNum = typeMap[state.type];
-      if (typeNum === void 0) {
-        userStates.delete(userId);
-        return await sendMsg(env, chatId, "❌ 未知的依赖类型");
-      }
-      const body = [];
-      for (let i = 0; i < depNames.length; i++) {
-        const n = depNames[i].trim();
-        if (n) body.push({ name: n, type: typeNum });
-      }
+      var depNames = text.split(/\s+/);
+      var typeMap = { python3: 0, nodejs: 1, linux: 2 };
+      var body = depNames.filter(function(n) { return n.trim(); }).map(function(n) {
+        return { name: n.trim(), type: typeMap[state.type] };
+      });
       if (body.length === 0) {
-        return await sendMsg(env, chatId, "❌ 请输入至少一个依赖名称");
+        return await sendMsg(env, chatId, "❌ 请输入依赖名称");
       }
-      const result = await qlApiCached(env, chatId, "no-cache", 0, "POST", "/open/dependencies", body);
+      var result = await qlApi(env, qlConfig, userId, "POST", "/open/dependencies", body);
       userStates.delete(userId);
-      await clearCache(env, chatId, "deps:" + state.type);
       if (result.code === 200) {
-        await sendMsg(env, chatId, "✅ 依赖添加成功\n\n已添加 " + body.length + " 个依赖");
-        return await showDepList(chatId, msgId, state.type, 0, env);
+        await sendMsg(env, chatId, "✅ 依赖添加成功");
+        return await showDepList(chatId, msgId, state.type, 0, userId, env);
       }
       return await sendMsg(env, chatId, "❌ 添加失败: " + (result.message || "未知错误"));
     }
+
+    // 添加脚本任务
     if (state.action === "add_script_cron") {
-      const schedule = text.toLowerCase() === "d" || text.toLowerCase() === "default" ? "0 0 * * *" : text;
-      const result = await qlApiCached(env, chatId, "no-cache", 0, "POST", "/open/crons", {
+      var schedule = text.toLowerCase() === "d" ? "0 0 * * *" : text;
+      var result = await qlApi(env, qlConfig, userId, "POST", "/open/crons", {
         name: state.filename,
         command: "task " + state.path,
-        schedule
+        schedule: schedule
       });
       userStates.delete(userId);
-      await clearCache(env, chatId, "tasks");
       if (result.code === 200) {
-        await sendMsg(env, chatId, "✅ 已添加到运行列表\n\n脚本: " + state.filename + "\n定时: " + schedule + "");
-        return await cmdScripts(chatId, "", 0, env, null);
+        await sendMsg(env, chatId, "✅ 已添加到运行列表\n\n脚本: <code>" + state.filename + "</code>\n定时: <code>" + schedule + "</code>");
+        return await cmdScripts(chatId, userId, "", 0, env, null);
       }
       return await sendMsg(env, chatId, "❌ 添加失败: " + (result.message || "未知错误"));
     }
+
   } catch (error) {
     userStates.delete(userId);
     return await sendMsg(env, chatId, "❌ 错误: " + error.message);
   }
 }
-
-export {
-  QlCache,
-  src_default as default
-};
