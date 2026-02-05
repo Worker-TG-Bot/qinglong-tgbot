@@ -1287,8 +1287,19 @@ async function handleFileUrl(msg, env) {
   await sendMsg(env, chatId, "⏳ 正在下载: " + fileName);
 
   try {
-    var fileResp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
-    if (!fileResp.ok) throw new Error("下载失败: HTTP " + fileResp.status);
+    var fileResp = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+        "Accept": "text/plain, */*; q=0.9",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Referer": "https://gitee.com/"
+      }
+    });
+
+    if (!fileResp.ok) {
+      const errorText = await fileResp.text().catch(() => "无响应体");
+      throw new Error(`下载失败: HTTP ${fileResp.status} - ${errorText.slice(0, 200)}`);
+    }
 
     var content = await fileResp.text();
     if (content.length > 1024 * 1024) throw new Error("文件过大 (最大 1MB)");
@@ -1308,6 +1319,7 @@ async function handleFileUrl(msg, env) {
 
     await sendMsg(env, chatId, "✅ <b>" + fileName + "</b> 上传成功！\n\n是否创建定时任务？", { reply_markup: kb });
   } catch (error) {
+    console.error("文件下载/上传错误:", error);
     await sendMsg(env, chatId, "❌ 处理失败: " + error.message);
   }
 }
